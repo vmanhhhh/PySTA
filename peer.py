@@ -354,6 +354,7 @@ class Peer:
         - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
         - upload <torrent_file_path> <tracker_url>: Upload a torrent file to the tracker.
         - download <torrent_file_path> <destination>: Download a file using a torrent.
+        - create_upload <file_path> <file_dir> <tracker_url>: Create a torrent file and upload it to the tracker.
         - stop: Stop the peer and exit.
         - help: Display this help message.
         """
@@ -419,6 +420,22 @@ if __name__ == "__main__":
                             logging.error("Error: Torrent file not found.")
                     else:
                         logging.error("Invalid command: Missing arguments for download.")
+                elif command.startswith("create_upload"):
+                    if len(command_parts) >= 4:
+                        file_path = command_parts[1]
+                        file_dir = command_parts[2]
+                        tracker_url = command_parts[3]
+                        peer.generate_torrent_file(file_path, file_dir, tracker_url)
+                        logging.info(f"Torrent file created for {file_path}")
+                        torrent_file_path = os.path.join(file_dir, f'{os.path.basename(file_path)}{TORRENT_EXTENSION}')
+                        if os.path.isfile(torrent_file_path):
+                            peer.announce_torrent_to_tracker(torrent_file_path, tracker_url)
+                        else:
+                            logging.error("Error: Torrent file not found after creation.")
+                    else:
+                        logging.error("Invalid command: Missing arguments for create_upload.")
+                else: 
+                    logging.error("Invalid command. Type 'help' for a list of commands.")
 
         user_input_thread = threading.Thread(target=handle_user_input)
         user_input_thread.start()
