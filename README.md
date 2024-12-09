@@ -19,11 +19,11 @@ To run Tracker
 python3 tracker.py
 ```
 Tracker URL is: `http://<your_tracker_ip>:6880/announce`
+
 To run Peer
 ```
 python3 peer.py
 ```
-peer0.py is improved version for MDDT requirement.
 
 ## Usage
     Available commands:
