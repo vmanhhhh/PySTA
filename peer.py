@@ -7,6 +7,7 @@ import requests
 import hashlib
 import math
 import logging
+import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -92,6 +93,7 @@ class Peer:
             logging.error(f"Error uploading torrent file: {e}")
 
     def retrieve_torrent_file(self, torrent_file_path, destination):
+        start_time = time.time()  # Start time for download
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
         file_path = os.path.join(destination, file_name_without_extension)
@@ -140,6 +142,13 @@ class Peer:
                 logging.error(f"Error: {response.status_code}")
         except Exception as e:
             logging.error(f"Error downloading torrent file: {e}")
+
+        end_time = time.time()  # End time for download
+        elapsed_time = end_time - start_time
+        average_speed = self.bytes / elapsed_time if elapsed_time > 0 else 0
+
+        logging.info(f"Download time: {elapsed_time:.2f} seconds.")
+        logging.info(f"Average download speed: {average_speed / (1024 * 1024):.2f} MB/s.")
 
     def download_piece_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
         for piece in range(start_piece, end_piece):
