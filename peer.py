@@ -2,7 +2,7 @@ import socket
 import os
 import bencodepy
 import threading
-import transform
+import torrent_utils
 import requests
 import hashlib
 import math
@@ -74,7 +74,7 @@ class Peer:
         file_name = os.path.basename(file_path)
         self.write_string_to_file(file_path)
         logging.info(f"Creating torrent file for {file_name}...")
-        transform.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
+        torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
     def upload_torrent_file(self, file_path, tracker_url):
         try:
@@ -102,7 +102,7 @@ class Peer:
                 torrent_data = torrent_file.read()
             
             decoded_torrent = bencodepy.decode(torrent_data)
-            decoded_str_keys = {transform.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
                 
@@ -166,7 +166,7 @@ class Peer:
                 return
 
             decoded_torrent = bencodepy.decode(file_data)
-            decoded_str_keys = {transform.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
             
             bit_size = 16 * 1024
             final_block = b""
@@ -299,7 +299,7 @@ class Peer:
         for file_path in file_paths:
             try:
                 os.access(file_path, os.R_OK)
-                calculated_infohash = transform.get_info_hash(file_path, url)
+                calculated_infohash = torrent_utils.get_info_hash(file_path, url)
                 logging.info(f"Calculated info hash: {calculated_infohash}")
                 logging.info(f"Received info hash: {infohash}")
                 if calculated_infohash == infohash:

@@ -13,7 +13,9 @@ repository but does not actually transmit file data to the server.
 tracker.
 - MDDT: The client can download multiple files from multiple source peer at once,
 simultaneously.
+
 ## Run
+
 To run Tracker
 ```
 python3 tracker.py
@@ -26,7 +28,7 @@ python3 peer.py
 ```
 
 ## Usage
-    Available commands:
+Available commands:
     - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
     - upload <torrent_file_path> <tracker_url>: Upload a torrent file to the tracker.
     - download <torrent_file_path> <destination>: Download a file using a torrent.
