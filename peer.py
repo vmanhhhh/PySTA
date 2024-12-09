@@ -7,6 +7,7 @@ import requests
 import hashlib
 import math
 import logging
+from datetime import datetime
 
 # Constants
 PEER_DIRECTORY = "peer_directory"
@@ -15,6 +16,21 @@ TORRENT_EXTENSION = ".torrent"
 TRACKER_UPLOAD_PATH = "/upload"
 TRACKER_DOWNLOAD_PATH = "/download"
 BUFFER_SIZE = 1024
+
+# Constants
+LOG_DIR = "log_peer"
+os.makedirs(LOG_DIR, exist_ok=True)
+log_filename = os.path.join(LOG_DIR, f"peer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# Configure logging to write to a file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
 
 class Peer:
     def __init__(self):
@@ -96,8 +112,20 @@ class Peer:
                 logging.info(f"Formatted IP addresses: {formatted_ip_addresses}")
 
                 threads = []
-                total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
+                piece_length = decoded_str_keys["info"][b"piece length"]
+                total_length = decoded_str_keys["info"][b"length"]
+                
+                if piece_length == 0:
+                    logging.error("Piece length is zero, cannot proceed with download.")
+                    return
+
+                total_pieces = math.ceil(total_length / piece_length)
                 logging.info(f"Total pieces: {total_pieces}")
+                
+                if len(formatted_ip_addresses) == 0:
+                    logging.error("No peers available for download.")
+                    return
+
                 pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
                 logging.info(f"Pieces per thread: {pieces_per_thread}")
                 start_piece = 0
@@ -168,8 +196,8 @@ class Peer:
                 message_id = int.from_bytes(sock.recv(1), "big")
                 if message_id != 7:
                     raise SystemError("Expecting piece id of 7")
-                # piece_index = int.from_bytes(sock.recv(4), "big")
-                # begin = int.from_bytes(sock.recv(4), "big")
+                piece_index = int.from_bytes(sock.recv(4), "big")
+                begin = int.from_bytes(sock.recv(4), "big")
                 received = 0
                 full_block = b""
                 size_of_block = message_length - 9
@@ -322,7 +350,6 @@ def get_local_ip():
         return None
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     peer = Peer()
     try:
         peer.port = peer.find_empty_port()
@@ -340,6 +367,8 @@ if __name__ == "__main__":
                     logging.info(f"Number of bytes downloaded: {peer.bytes}")
                     peer.listen_socket.close()
                     break
+                elif command.lower() == "help":
+                    peer.print_help()
                 elif command.startswith("create"):
                     if len(command_parts) >= 4:
                         file_path = command_parts[1]

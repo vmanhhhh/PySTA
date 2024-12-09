@@ -162,3 +162,5 @@ cython_debug/
 # Directory
 peer_directory
 tracker_directory
+log_peer
+log_tracker

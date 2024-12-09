@@ -3,10 +3,27 @@ import logging
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime
 
+# Constants
 SEEDER_FILE_DIR = "tracker_directory"
 SEEDER_FILE_NAME = "seeder_info.txt"
 SEEDER_FILE_PATH = os.path.join(SEEDER_FILE_DIR, SEEDER_FILE_NAME)
+
+# Constants
+LOG_DIR = "log_tracker"
+os.makedirs(LOG_DIR, exist_ok=True)
+log_filename = os.path.join(LOG_DIR, f"tracker{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# Configure logging to write to a file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
+)
 
 class TrackerRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
