@@ -26,25 +26,25 @@ logging.basicConfig(
 )
 
 class TrackerRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def handle_get_request(self):
         path = urlparse(self.path).path
         client_ip = self.client_address[0]
 
         if path.startswith("/announce/upload"):
-            self.handle_announce_upload(client_ip)
+            self.handle_upload_announcement(client_ip)
         elif path.startswith("/announce/download"):
-            self.handle_announce_download()
+            self.handle_download_announcement()
         else:
             self.send_error(404, "Not Found")
 
-    def handle_announce_upload(self, client_ip):
+    def handle_upload_announcement(self, client_ip):
         parsed_url = urlparse(self.path)
         query_params = parse_qs(parsed_url.query)
         info_hash = query_params.get('info_hash', [None])[0]
         port = query_params.get('port', [None])[0]
 
         if info_hash and port:
-            self._update_seeder(port, info_hash, client_ip)
+            self.update_seeder_info(port, info_hash, client_ip)
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
@@ -52,13 +52,13 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(400, "Bad Request")
 
-    def handle_announce_download(self):
+    def handle_download_announcement(self):
         parsed_url = urlparse(self.path)
         query_params = parse_qs(parsed_url.query)
         info_hash = query_params.get('info_hash', [None])[0]
 
         if info_hash:
-            response = self.find_and_print_line(SEEDER_FILE_PATH, info_hash)
+            response = self.find_seeder_info(SEEDER_FILE_PATH, info_hash)
             if response:
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
@@ -69,7 +69,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(400, "Bad Request")
 
-    def _update_seeder(self, port, info_hash, client_ip):
+    def update_seeder_info(self, port, info_hash, client_ip):
         try:
             seeder_info = f"{client_ip}:{port}"
             os.makedirs(SEEDER_FILE_DIR, exist_ok=True)
@@ -103,7 +103,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logging.error(f"Error updating seeder information: {e}")
 
-    def find_and_print_line(self, file_path, target_string):
+    def find_seeder_info(self, file_path, target_string):
         try:
             with open(file_path, 'r') as file:
                 for line in file:

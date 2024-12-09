@@ -41,7 +41,7 @@ class Peer:
         self.file_path = []
         self.lock = threading.Lock()
     
-    def find_empty_port(self, start_port=6881, end_port=65535):
+    def find_available_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -51,7 +51,7 @@ class Peer:
                 continue
         return None
 
-    def write_string_to_file(self, string):
+    def store_file_path(self, string):
         file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
         file_path = os.path.join(PEER_DIRECTORY, file_name)
         os.makedirs(PEER_DIRECTORY, exist_ok=True)
@@ -70,13 +70,13 @@ class Peer:
             for unique_string in unique_strings:
                 file.write(unique_string + '\n')
 
-    def create_torrent_file(self, file_path, file_dir, tracker_url):
+    def generate_torrent_file(self, file_path, file_dir, tracker_url):
         file_name = os.path.basename(file_path)
-        self.write_string_to_file(file_path)
+        self.store_file_path(file_path)
         logging.info(f"Creating torrent file for {file_name}...")
         torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
-    def upload_torrent_file(self, file_path, tracker_url):
+    def announce_torrent_to_tracker(self, file_path, tracker_url):
         try:
             with open(file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
@@ -92,7 +92,7 @@ class Peer:
         except Exception as e:
             logging.error(f"Error uploading torrent file: {e}")
 
-    def download_torrent_file(self, torrent_file_path, destination):
+    def retrieve_torrent_file(self, torrent_file_path, destination):
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
         file_path = os.path.join(destination, file_name_without_extension)
@@ -135,18 +135,18 @@ class Peer:
                         end_piece = start_piece + pieces_per_thread
                         if end_piece > total_pieces:
                             end_piece = total_pieces
-                        executor.submit(self.download_range, ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces)
+                        executor.submit(self.download_piece_range, ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces)
                         start_piece = end_piece
             else:
                 logging.error(f"Error: {response.status_code}")
         except Exception as e:
             logging.error(f"Error downloading torrent file: {e}")
 
-    def download_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
+    def download_piece_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
         for piece in range(start_piece, end_piece):
-            self.download_piece(ip_address, file_data, destination, str(piece), announce_url, total_pieces)
+            self.fetch_piece_from_peer(ip_address, file_data, destination, str(piece), announce_url, total_pieces)
 
-    def download_piece(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
+    def fetch_piece_from_peer(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
         peer_ip, peer_port = ip_address
         sock = socket.create_connection((peer_ip, peer_port))
         
@@ -160,7 +160,7 @@ class Peer:
             sock.send(interested_payload)
             unchoke_msg = sock.recv(5)
             logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
-            message_length, message_id = self.parse_peer_message(unchoke_msg)
+            message_length, message_id = self.decode_peer_message(unchoke_msg)
             if message_id != 1:
                 logging.error(f"Unexpected message ID: {message_id}, expected 1 (unchoke)")
                 return
@@ -219,16 +219,16 @@ class Peer:
 
         logging.info(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
-            self.merge_temp_files(destination, total_pieces)
+            self.combine_pieces_into_file(destination, total_pieces)
             self.bytes += total_length
             logging.info("Download completed.")
 
-    def parse_peer_message(self, peer_message):
+    def decode_peer_message(self, peer_message):
         message_length = int.from_bytes(peer_message[:4], "big")
         message_id = int.from_bytes(peer_message[4:5], "big")
         return message_length, message_id
 
-    def handle_peer_request(self, client_socket, client_address):
+    def process_peer_request(self, client_socket, client_address):
         try:
             data = client_socket.recv(BUFFER_SIZE)
             logging.info(f"Received data from {client_address}: {data}")
@@ -241,12 +241,12 @@ class Peer:
                     logging.info(f"Data: {data}")
                     logging.info(f"URL: {url}")
                 
-                found_files = self.find_file_by_infohash(data, url)
+                found_files = self.locate_file_by_infohash(data, url)
                 logging.info(f"Found files: {found_files}")
                 if found_files:
                     client_socket.sendall(b"OK")
                     client_socket.recv(BUFFER_SIZE).decode()
-                    unchoke_payload = self.create_unchoke_message()
+                    unchoke_payload = self.generate_unchoke_message()
                     client_socket.sendall(unchoke_payload)
                     while True:
                         request_length = int.from_bytes(client_socket.recv(4), "big")
@@ -261,7 +261,7 @@ class Peer:
                         offset = int.from_bytes(request_data[4:8], "big")
                         block_length = int.from_bytes(request_data[8:], "big")
                         
-                        response_data = self.process_request(piece_index, offset, block_length, found_files[0])
+                        response_data = self.handle_piece_request(piece_index, offset, block_length, found_files[0])
                         
                         response_length = len(response_data) + 9
                         response_payload = (
@@ -279,7 +279,7 @@ class Peer:
         except Exception as e:
             logging.error(f"Error handling peer request: {e}")
 
-    def read_strings_from_file(self):
+    def load_stored_file_paths(self):
         file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
         file_path = os.path.join(PEER_DIRECTORY, file_name)   
         strings = []
@@ -293,9 +293,9 @@ class Peer:
 
         return strings
 
-    def find_file_by_infohash(self, infohash, url):
+    def locate_file_by_infohash(self, infohash, url):
         found_files = []
-        file_paths = self.read_strings_from_file()
+        file_paths = self.load_stored_file_paths()
         for file_path in file_paths:
             try:
                 os.access(file_path, os.R_OK)
@@ -311,13 +311,13 @@ class Peer:
 
         return found_files
 
-    def create_unchoke_message(self):
+    def generate_unchoke_message(self):
         message_length = (1).to_bytes(4, "big")
         message_id = (1).to_bytes(1, "big")
         unchoke_payload = message_length + message_id
         return unchoke_payload
 
-    def process_request(self, piece_index, offset, block_length, file_path, piece_length=2**20):
+    def handle_piece_request(self, piece_index, offset, block_length, file_path, piece_length=2**20):
         with open(file_path, "rb") as file:
             piece_start_position = piece_index * piece_length + offset
             file.seek(piece_start_position)
@@ -325,7 +325,7 @@ class Peer:
             data = file.read(block_length)
         return data
 
-    def merge_temp_files(self, destination, total_pieces):
+    def combine_pieces_into_file(self, destination, total_pieces):
         try:
             with open(destination, "wb") as f_dest:
                 for piece_index in range(total_pieces):
@@ -339,7 +339,8 @@ class Peer:
             logging.info(f"Merged temporary files into {destination}")
         except Exception as e:
             logging.error(f"Error merging temporary files: {e}")
-    def print_help(self):
+
+    def display_help(self):
         help_text = """
         Available commands:
         - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
@@ -363,7 +364,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     peer = Peer()
     try:
-        peer.port = peer.find_empty_port()
+        peer.port = peer.find_available_port()
         logging.info(f"Peer is listening on {get_local_ip()}:{peer.port}")
         peer.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         peer.listen_socket.bind((get_local_ip(), peer.port))
@@ -379,13 +380,13 @@ if __name__ == "__main__":
                     peer.listen_socket.close()
                     break
                 elif command.lower() == "help":
-                    peer.print_help()
+                    peer.display_help()
                 elif command.startswith("create"):
                     if len(command_parts) >= 4:
                         file_path = command_parts[1]
                         file_dir = command_parts[2]
                         url = command_parts[3]
-                        peer.create_torrent_file(file_path, file_dir, url)
+                        peer.generate_torrent_file(file_path, file_dir, url)
                         logging.info(f"Torrent file created for {file_path}")
                     else:
                         logging.error("Invalid command: Missing arguments for create.")
@@ -394,7 +395,7 @@ if __name__ == "__main__":
                         torrent_file_path = command_parts[1]
                         new_url = command_parts[2]
                         if os.path.isfile(torrent_file_path):
-                            peer.upload_torrent_file(torrent_file_path, new_url)
+                            peer.announce_torrent_to_tracker(torrent_file_path, new_url)
                         else:
                             logging.error("Error: Torrent file not found.")
                     else:
@@ -404,7 +405,7 @@ if __name__ == "__main__":
                         torrent_file_path = command_parts[1]
                         destination = command_parts[2]
                         if os.path.isfile(torrent_file_path):
-                            peer.download_torrent_file(torrent_file_path, destination)
+                            peer.retrieve_torrent_file(torrent_file_path, destination)
                         else:
                             logging.error("Error: Torrent file not found.")
                     else:
@@ -416,6 +417,6 @@ if __name__ == "__main__":
         while True:
             client_socket, client_address = peer.listen_socket.accept()
             logging.info(f"Accepted connection from {client_address}")
-            threading.Thread(target=peer.handle_peer_request, args=(client_socket, client_address)).start()
+            threading.Thread(target=peer.process_peer_request, args=(client_socket, client_address)).start()
     except Exception as e:
         logging.error(f"Error occurred: {e}")
