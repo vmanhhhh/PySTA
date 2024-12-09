@@ -8,6 +8,7 @@ import hashlib
 import math
 import logging
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 # Constants
 PEER_DIRECTORY = "peer_directory"
@@ -38,6 +39,7 @@ class Peer:
         self.port = None
         self.bytes = 0
         self.file_path = []
+        self.lock = threading.Lock()
     
     def find_empty_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
@@ -111,34 +113,30 @@ class Peer:
                 formatted_ip_addresses = [(ip.strip(), int(port.strip())) for pair in ip_port_pairs for ip, port in [pair.split(":")] if port.strip() != str(self.port)]
                 logging.info(f"Formatted IP addresses: {formatted_ip_addresses}")
 
-                threads = []
-                piece_length = decoded_str_keys["info"][b"piece length"]
-                total_length = decoded_str_keys["info"][b"length"]
-                
-                if piece_length == 0:
-                    logging.error("Piece length is zero, cannot proceed with download.")
-                    return
+                with ThreadPoolExecutor(max_workers=len(formatted_ip_addresses)) as executor:
+                    piece_length = decoded_str_keys["info"][b"piece length"]
+                    total_length = decoded_str_keys["info"][b"length"]
+                    
+                    if piece_length == 0:
+                        logging.error("Piece length is zero, cannot proceed with download.")
+                        return
 
-                total_pieces = math.ceil(total_length / piece_length)
-                logging.info(f"Total pieces: {total_pieces}")
-                
-                if len(formatted_ip_addresses) == 0:
-                    logging.error("No peers available for download.")
-                    return
+                    total_pieces = math.ceil(total_length / piece_length)
+                    logging.info(f"Total pieces: {total_pieces}")
+                    
+                    if len(formatted_ip_addresses) == 0:
+                        logging.error("No peers available for download.")
+                        return
 
-                pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
-                logging.info(f"Pieces per thread: {pieces_per_thread}")
-                start_piece = 0
-                for ip_address in formatted_ip_addresses:
-                    end_piece = start_piece + pieces_per_thread
-                    if end_piece > total_pieces:
-                        end_piece = total_pieces
-                    thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces))
-                    threads.append(thread)
-                    start_piece = end_piece
-                    thread.start()
-                for thread in threads:
-                    thread.join()
+                    pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
+                    logging.info(f"Pieces per thread: {pieces_per_thread}")
+                    start_piece = 0
+                    for ip_address in formatted_ip_addresses:
+                        end_piece = start_piece + pieces_per_thread
+                        if end_piece > total_pieces:
+                            end_piece = total_pieces
+                        executor.submit(self.download_range, ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces)
+                        start_piece = end_piece
             else:
                 logging.error(f"Error: {response.status_code}")
         except Exception as e:
@@ -164,7 +162,8 @@ class Peer:
             logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
             message_length, message_id = self.parse_peer_message(unchoke_msg)
             if message_id != 1:
-                raise SystemError("Expecting unchoke id of 1")
+                logging.error(f"Unexpected message ID: {message_id}, expected 1 (unchoke)")
+                return
 
             decoded_torrent = bencodepy.decode(file_data)
             decoded_str_keys = {transform.bytes_to_str(k): v for k, v in decoded_torrent.items()}
@@ -195,7 +194,8 @@ class Peer:
                 message_length = int.from_bytes(sock.recv(4), "big")
                 message_id = int.from_bytes(sock.recv(1), "big")
                 if message_id != 7:
-                    raise SystemError("Expecting piece id of 7")
+                    logging.error(f"Unexpected message ID: {message_id}, expected 7 (piece)")
+                    return
                 piece_index = int.from_bytes(sock.recv(4), "big")
                 begin = int.from_bytes(sock.recv(4), "big")
                 received = 0
@@ -339,7 +339,6 @@ class Peer:
             logging.info(f"Merged temporary files into {destination}")
         except Exception as e:
             logging.error(f"Error merging temporary files: {e}")
-
     def print_help(self):
         help_text = """
         Available commands:
@@ -361,6 +360,7 @@ def get_local_ip():
         return None
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     peer = Peer()
     try:
         peer.port = peer.find_empty_port()
