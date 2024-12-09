@@ -26,6 +26,8 @@ logging.basicConfig(
 )
 
 class TrackerRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.handle_get_request()
     def handle_get_request(self):
         path = urlparse(self.path).path
         client_ip = self.client_address[0]

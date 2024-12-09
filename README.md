@@ -14,7 +14,12 @@ tracker.
 - MDDT: The client can download multiple files from multiple source peer at once,
 simultaneously.
 
-## Run
+## Usage
+
+To install package
+```
+pip install bencodepy logging requests logging
+```
 
 To run Tracker
 ```

@@ -38,7 +38,6 @@ class Peer:
         self.listen_socket = None 
         self.port = None
         self.bytes = 0
-        self.file_path = []
         self.lock = threading.Lock()
     
     def find_available_port(self, start_port=6881, end_port=65535):
@@ -196,8 +195,8 @@ class Peer:
                 if message_id != 7:
                     logging.error(f"Unexpected message ID: {message_id}, expected 7 (piece)")
                     return
-                piece_index = int.from_bytes(sock.recv(4), "big")
-                begin = int.from_bytes(sock.recv(4), "big")
+                int.from_bytes(sock.recv(4), "big")
+                int.from_bytes(sock.recv(4), "big")
                 received = 0
                 full_block = b""
                 size_of_block = message_length - 9
@@ -377,6 +376,7 @@ if __name__ == "__main__":
 
                 if command.lower() == "stop":
                     logging.info(f"Number of bytes downloaded: {peer.bytes}")
+                    logging.info(f"Number of megabytes downloaded: {peer.bytes / (1024 * 1024):.2f}")
                     peer.listen_socket.close()
                     break
                 elif command.lower() == "help":
