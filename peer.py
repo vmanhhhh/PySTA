@@ -120,8 +120,12 @@ class Peer:
                 for pair in ip_port_pairs:
                     try:
                         ip, port = pair.strip().split(":")
-                        if port.strip() != str(self.port):
-                            formatted_ip_addresses.append((ip.strip(), int(port.strip())))
+                        ip = ip.strip()
+                        port = port.strip()
+                        if ip and port and port.isdigit() and port != str(self.port):
+                            formatted_ip_addresses.append((ip, int(port)))
+                        else:
+                            logging.error(f"Invalid IP-Port pair: '{pair}'")
                     except ValueError as e:
                         logging.error(f"Error parsing IP-Port pair '{pair}': {e}")
 
