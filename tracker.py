@@ -32,9 +32,9 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         client_ip = self.client_address[0]
 
-        if path.startswith("/announce/upload"):
+        if path.startswith("/announce"):
             self.handle_announce(client_ip)
-        elif path.startswith("/announce/download"):
+        elif path.startswith("/scrape"):
             self.handle_scrape()
         else:
             self.send_error(404, "Not Found")
