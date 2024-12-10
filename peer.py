@@ -145,7 +145,7 @@ class Peer:
                     # Record the end time and calculate elapsed time
                     end_time = time.time()
                     elapsed_time = end_time - start_time
-                    logging.info(f"Download completed in {elapsed_time:.2f} seconds.")
+                    logging.info(f"Time elapsed: {elapsed_time:.2f} seconds")
                 else:
                     logging.error("Error:", response.status_code)
             except Exception as e:
