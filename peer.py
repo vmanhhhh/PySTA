@@ -141,7 +141,7 @@ class Peer:
                     threads = []
                     total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
                     logging.info(f"Total pieces: {total_pieces}")
-                    pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
+                    pieces_per_thread = total_pieces // len(active_peers) + 1
                     logging.info(f"Pieces per thread: {pieces_per_thread}")
                     start_piece = 0
                     start_time = time.time()
