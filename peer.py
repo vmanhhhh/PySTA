@@ -10,13 +10,14 @@ import logging
 import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urljoin
 
 # Constants
 PEER_DIRECTORY = "peer_directory"
 INFO_FILE_PREFIX = "info_"
 TORRENT_EXTENSION = ".torrent"
-TRACKER_UPLOAD_PATH = "/upload"
-TRACKER_DOWNLOAD_PATH = "/download"
+TRACKER_ANNOUNCE_PATH = "/announce"
+TRACKER_SCRAPE_PATH = "/scrape"
 BUFFER_SIZE = 1024
 
 # Constants
@@ -82,15 +83,15 @@ class Peer:
                 torrent_data = torrent_file.read()
             
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
-            tracker_url = f"{tracker_url}{TRACKER_UPLOAD_PATH}?info_hash={info_hash}"
+            tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
             response = requests.get(tracker_url, params=params)
             if response.status_code == 200:
-                logging.info("Upload to tracker successfully.")
+                logging.info("Announce to tracker successfully.")
             else:
-                logging.error(f"Failed to upload to tracker. Status code: {response.status_code}")
+                logging.error(f"Failed to announce to tracker. Status code: {response.status_code}")
         except Exception as e:
-            logging.error(f"Error uploading torrent file: {e}")
+            logging.error(f"Error announceing torrent file: {e}")
 
     def retrieve_torrent_file(self, torrent_file_path, destination):
         start_time = time.time()  # Start time for download
@@ -107,7 +108,7 @@ class Peer:
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
                 
-            announce_url_down = f"{announce_url}{TRACKER_DOWNLOAD_PATH}"
+            announce_url_down = f"{announce_url}{TRACKER_SCRAPE_PATH}"
             response = requests.get(announce_url_down, params={"info_hash": info_hash})
             if response.status_code == 200:
                 ip_port_pairs = response.text.split(",")
@@ -352,13 +353,33 @@ class Peer:
         help_text = """
         Available commands:
         - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
-        - upload <torrent_file_path> <tracker_url>: Upload a torrent file to the tracker.
+        - announce <torrent_file_path> <tracker_url>: Announce a torrent file to the tracker.
         - download <torrent_file_path> <destination>: Download a file using a torrent.
-        - create_upload <file_path> <file_dir> <tracker_url>: Create a torrent file and upload it to the tracker.
+        - scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
+        - create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
         - stop: Stop the peer and exit.
         - help: Display this help message.
         """
         print(help_text)
+
+    def scrape_torrent_info(self, torrent_file_path, tracker_url):
+        try:
+            with open(torrent_file_path, 'rb') as torrent_file:
+                torrent_data = torrent_file.read()
+            
+            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            if not tracker_url.endswith('/'):
+                tracker_url += '/'
+            scrape_url = urljoin(tracker_url, TRACKER_SCRAPE_PATH)
+            scrape_url = f"{scrape_url}?info_hash={info_hash}"
+            logging.info(f"Scraping tracker for torrent info: {scrape_url}")
+            response = requests.get(scrape_url)
+            if response.status_code == 200:
+                logging.info(f"Scrape successful: {response.text}")
+            else:
+                logging.error(f"Failed to scrape tracker. Status code: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Error scraping torrent info: {e}")
 
 def get_local_ip():
     try:
@@ -400,16 +421,16 @@ if __name__ == "__main__":
                         logging.info(f"Torrent file created for {file_path}")
                     else:
                         logging.error("Invalid command: Missing arguments for create.")
-                elif command.startswith("upload"):
+                elif command.startswith("announce"):
                     if len(command_parts) >= 3:
                         torrent_file_path = command_parts[1]
-                        new_url = command_parts[2]
+                        tracker_url = command_parts[2]
                         if os.path.isfile(torrent_file_path):
-                            peer.announce_torrent_to_tracker(torrent_file_path, new_url)
+                            peer.announce_torrent_to_tracker(torrent_file_path, tracker_url)
                         else:
                             logging.error("Error: Torrent file not found.")
                     else:
-                        logging.error("Invalid command: Missing arguments for upload.")
+                        logging.error("Invalid command: Missing arguments for announce.")
                 elif command.startswith("download"):
                     if len(command_parts) >= 3:
                         torrent_file_path = command_parts[1]
@@ -420,7 +441,17 @@ if __name__ == "__main__":
                             logging.error("Error: Torrent file not found.")
                     else:
                         logging.error("Invalid command: Missing arguments for download.")
-                elif command.startswith("create_upload"):
+                elif command.startswith("scrape"):
+                    if len(command_parts) >= 3:
+                        torrent_file_path = command_parts[1]
+                        tracker_url = command_parts[2]
+                        if os.path.isfile(torrent_file_path):
+                            peer.scrape_torrent_info(torrent_file_path, tracker_url)
+                        else:
+                            logging.error("Error: Torrent file not found.")
+                    else:
+                        logging.error("Invalid command: Missing arguments for scrape.")
+                elif command.startswith("create_announce"):
                     if len(command_parts) >= 4:
                         file_path = command_parts[1]
                         file_dir = command_parts[2]
@@ -433,7 +464,7 @@ if __name__ == "__main__":
                         else:
                             logging.error("Error: Torrent file not found after creation.")
                     else:
-                        logging.error("Invalid command: Missing arguments for create_upload.")
+                        logging.error("Invalid command: Missing arguments for create_announce.")
                 else: 
                     logging.error("Invalid command. Type 'help' for a list of commands.")
 

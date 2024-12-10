@@ -25,7 +25,7 @@ To run Tracker
 ```
 python3 tracker.py
 ```
-Tracker URL is: `http://<your_tracker_ip>:6880/announce`
+Tracker URL is: `http://<your_tracker_ip>:6880`
 
 To run Peer
 ```
@@ -35,7 +35,9 @@ python3 peer.py
 ## Usage
 Available commands:
     - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
-    - upload <torrent_file_path> <tracker_url>: Upload a torrent file to the tracker.
+    - announce <torrent_file_path> <tracker_url>: Announce a torrent file to the tracker.
     - download <torrent_file_path> <destination>: Download a file using a torrent.
+    - scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
+    - create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
     - stop: Stop the peer and exit.
     - help: Display this help message.

@@ -32,14 +32,14 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         client_ip = self.client_address[0]
 
-        if path.startswith("/announce/upload"):
-            self.handle_upload_announcement(client_ip)
-        elif path.startswith("/announce/download"):
-            self.handle_download_announcement()
+        if path.startswith("/announce"):
+            self.handle_announce(client_ip)
+        elif path.startswith("/scrape"):
+            self.handle_scrape()
         else:
             self.send_error(404, "Not Found")
 
-    def handle_upload_announcement(self, client_ip):
+    def handle_announce(self, client_ip):
         parsed_url = urlparse(self.path)
         query_params = parse_qs(parsed_url.query)
         info_hash = query_params.get('info_hash', [None])[0]
@@ -54,7 +54,7 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(400, "Bad Request")
 
-    def handle_download_announcement(self):
+    def handle_scrape(self):
         parsed_url = urlparse(self.path)
         query_params = parse_qs(parsed_url.query)
         info_hash = query_params.get('info_hash', [None])[0]
