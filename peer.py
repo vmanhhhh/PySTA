@@ -102,6 +102,15 @@ class Peer:
         except Exception as e:
             logging.error(f"Error checking peer {ip_address}: {e}")
         return False
+    def start_multiple_downloads(self, torrent_files, destination):
+        threads = []
+        for torrent_file in torrent_files:
+            thread = threading.Thread(target=self.retrieve_torrent_file, args=(torrent_file, destination))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
     def retrieve_torrent_file(self, torrent_file_path, destination):
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
@@ -456,6 +465,7 @@ class Peer:
         - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
         - announce <torrent_file_path> <tracker_url>: Announce a torrent file to the tracker.
         - download <torrent_file_path> <destination>: Download a file using a torrent.
+        - downloads <torrent_file1> <torrent_file2> ... <destination>: Download multiple files using torrents
         - scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
         - create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
         - stop: Stop the peer and exit.
@@ -513,6 +523,13 @@ if __name__ == "__main__":
                     break
                 elif command.lower() == "help":
                     peer.display_help()
+                elif command.startswith("downloads"):
+                    if len(command_parts) >= 3:
+                        torrent_files = [file.strip('"\'') for file in command_parts[1:-1]]
+                        destination = command_parts[-1].strip('"\'')
+                        peer.start_multiple_downloads(torrent_files, destination)
+                    else:
+                        logging.error("Invalid command: Missing arguments for downloads.")
                 elif command.startswith("create_announce"):
                     if len(command_parts) >= 4:
                         file_path = command_parts[1].strip('"\'')
