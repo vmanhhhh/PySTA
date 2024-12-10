@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 PEER_DIRECTORY = "peer_directory"
 INFO_FILE_PREFIX = "info_"
 TORRENT_EXTENSION = ".torrent"
-TRACKER_ANNOUNCE_PATH = "/announce"
+TRACKER_ANNOUNCE_PATH = "/upload"
 TRACKER_SCRAPE_PATH = "/scrape"
 BUFFER_SIZE = 1024
 
@@ -105,6 +105,7 @@ class Peer:
 
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
+
                 
             try:
                 announce_url_down = announce_url + "/download"
@@ -119,13 +120,13 @@ class Peer:
                         ip, port = pair.strip().split(":")
                         if port != self.port:
                             formatted_ip_addresses.append((ip, int(port)))
-                    print("Formatted IP addresses:", formatted_ip_addresses)
+                    logging.info("Formatted IP addresses:", formatted_ip_addresses)
 
                     threads = []
                     total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
-                    print(f"Total pieces: {total_pieces}")
+                    logging.info(f"Total pieces: {total_pieces}")
                     pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
-                    print(f"Pieces per thread: {pieces_per_thread}")
+                    logging.info(f"Pieces per thread: {pieces_per_thread}")
                     start_piece = 0
                     for ip_address in formatted_ip_addresses:
                         end_piece = start_piece + pieces_per_thread
@@ -139,11 +140,11 @@ class Peer:
                     for thread in threads:
                         thread.join()
                 else:
-                    print("Error:", response.status_code)
+                    logging.error("Error:", response.status_code)
             except Exception as e:
-                print(f"Error connecting to tracker: {e}")
+                logging.error(f"Error connecting to tracker: {e}")
         except Exception as e:
-            print(f"Error downloading torrent file: {e}")
+            logging.error(f"Error downloading torrent file: {e}")
 
     def download_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
         for piece in range(start_piece, end_piece):
@@ -164,8 +165,8 @@ class Peer:
             sock.send(interested_payload)
             # received unchoke message
             unchoke_msg = sock.recv(5)
-            print(f"Received unchoke message from {ip_address}: {unchoke_msg}")
-            message_length, message_id = self.parse_peer_message(unchoke_msg)
+            logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
+            message_length, message_id = self.decode_peer_message(unchoke_msg)
             if message_id != 1:
                 raise SystemError("Expecting unchoke id of 1")
 
@@ -210,24 +211,24 @@ class Peer:
                     full_block += block
                     received += len(block)
                 final_block += full_block
-                print(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
+                logging.info(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
         
         try:
             # Lưu dữ liệu của piece vào tệp tạm thời
             with open(piece_filename, "wb") as f:
                 f.write(final_block)
         except Exception as e:
-            print(e)
+            logging.error(e)
 
         # Kiểm tra xem tất cả các phần đã được tải xong chưa
         downloaded_pieces = [f"{destination}_piece_{piece}" for piece in range(total_pieces)]
         d = len(list(piece_file for piece_file in downloaded_pieces if os.path.exists(piece_file)))
 
-        print(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
+        logging.info(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
-            self.merge_temp_files(destination, math.ceil(total_length / piece_length))
+            self.combine_pieces_into_file(destination, total_pieces)
             self.bytes += total_length  # Cập nhật số byte đã tải
-            print("Download completed.")
+            logging.info("Download completed.")
 
 
     def fetch_piece_from_peer(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
