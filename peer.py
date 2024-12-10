@@ -115,6 +115,7 @@ class Peer:
             response = requests.get(announce_url_down, params={"info_hash": info_hash})
             if response.status_code == 200:
                 ip_port_pairs = response.text.split(",")
+                logging.info(f"IP addresses: {ip_port_pairs}")
                 formatted_ip_addresses = [(ip.strip(), int(port.strip())) for pair in ip_port_pairs for ip, port in [pair.split(":")] if port.strip() != str(self.port)]
                 logging.info(f"Formatted IP addresses: {formatted_ip_addresses}")
 
