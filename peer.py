@@ -412,6 +412,20 @@ if __name__ == "__main__":
                     break
                 elif command.lower() == "help":
                     peer.display_help()
+                elif command.startswith("create_announce"):
+                    if len(command_parts) >= 4:
+                        file_path = command_parts[1]
+                        file_dir = command_parts[2]
+                        tracker_url = command_parts[3]
+                        peer.generate_torrent_file(file_path, file_dir, tracker_url)
+                        logging.info(f"Torrent file created for {file_path}")
+                        torrent_file_path = os.path.join(file_dir, f'{os.path.basename(file_path)}{TORRENT_EXTENSION}')
+                        if os.path.isfile(torrent_file_path):
+                            peer.announce_torrent_to_tracker(torrent_file_path, tracker_url)
+                        else:
+                            logging.error("Error: Torrent file not found after creation.")
+                    else:
+                        logging.error("Invalid command: Missing arguments for create_announce.")
                 elif command.startswith("create"):
                     if len(command_parts) >= 4:
                         file_path = command_parts[1]
@@ -451,20 +465,6 @@ if __name__ == "__main__":
                             logging.error("Error: Torrent file not found.")
                     else:
                         logging.error("Invalid command: Missing arguments for scrape.")
-                elif command.startswith("create_announce"):
-                    if len(command_parts) >= 4:
-                        file_path = command_parts[1]
-                        file_dir = command_parts[2]
-                        tracker_url = command_parts[3]
-                        peer.generate_torrent_file(file_path, file_dir, tracker_url)
-                        logging.info(f"Torrent file created for {file_path}")
-                        torrent_file_path = os.path.join(file_dir, f'{os.path.basename(file_path)}{TORRENT_EXTENSION}')
-                        if os.path.isfile(torrent_file_path):
-                            peer.announce_torrent_to_tracker(torrent_file_path, tracker_url)
-                        else:
-                            logging.error("Error: Torrent file not found after creation.")
-                    else:
-                        logging.error("Invalid command: Missing arguments for create_announce.")
                 else: 
                     logging.error("Invalid command. Type 'help' for a list of commands.")
 
