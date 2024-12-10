@@ -102,6 +102,22 @@ class Peer:
         except Exception as e:
             logging.error(f"Error checking peer {ip_address}: {e}")
         return False
+    def ping_peer(self, ip_address):
+        peer_ip, peer_port = ip_address
+        try:
+            start_time = time.time()
+            with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
+                sock.sendall(b"PING")
+                response = sock.recv(4)
+                if response:
+                    end_time = time.time()
+                    response_time = end_time - start_time
+                    logging.info(f"Ping to {peer_ip}:{peer_port} successful. Response time: {response_time:.4f} seconds.")
+                    return response_time
+        except Exception as e:
+            logging.error(f"Error checking peer {peer_ip}:{peer_port}: {e}")
+        logging.error(f"Ping to {peer_ip}:{peer_port} failed.")
+        return None
     def start_multiple_downloads(self, torrent_files, destination):
         threads = []
         for torrent_file in torrent_files:
@@ -468,6 +484,7 @@ class Peer:
         - downloads <torrent_file1> <torrent_file2> ... <destination>: Download multiple files using torrents
         - scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
         - create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
+        - ping <ip_address>: Ping a peer.
         - stop: Stop the peer and exit.
         - help: Display this help message.
         """
@@ -583,6 +600,13 @@ if __name__ == "__main__":
                             logging.error("Error: Torrent file not found.")
                     else:
                         logging.error("Invalid command: Missing arguments for scrape.")
+                elif command.startswith("ping"):
+                    if len(command_parts) == 2:
+                        ip_address = command_parts[1]
+                        peer_ip, peer_port = ip_address.split(':')
+                        peer.ping_peer((peer_ip, int(peer_port)))
+                    else:
+                        logging.error("Invalid command: Missing IP address for ping.")
                 else: 
                     logging.error("Invalid command. Type 'help' for a list of commands.")
 
