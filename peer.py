@@ -41,6 +41,8 @@ class Peer:
         self.port = None
         self.bytes = 0
         self.lock = threading.Lock()
+        self.elapsed_time = 0
+        self.average_speed = 0
     
     def find_available_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
@@ -106,9 +108,12 @@ class Peer:
             decoded_torrent = bencodepy.decode(torrent_data)
             decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+
             announce_url = decoded_torrent[b"announce"].decode()
+            # Remove '/announce' from the announce_url
+            base_url = announce_url.rsplit('/', 1)[0]
                 
-            announce_url_down = f"{announce_url}{TRACKER_SCRAPE_PATH}"
+            announce_url_down = f"{base_url}{TRACKER_SCRAPE_PATH}"
             response = requests.get(announce_url_down, params={"info_hash": info_hash})
             if response.status_code == 200:
                 ip_port_pairs = response.text.split(",")
@@ -145,11 +150,8 @@ class Peer:
             logging.error(f"Error downloading torrent file: {e}")
 
         end_time = time.time()  # End time for download
-        elapsed_time = end_time - start_time
-        average_speed = self.bytes / elapsed_time if elapsed_time > 0 else 0
-
-        logging.info(f"Download time: {elapsed_time:.2f} seconds.")
-        logging.info(f"Average download speed: {average_speed / (1024 * 1024):.2f} MB/s.")
+        self.elapsed_time = end_time - start_time
+        self.average_speed = self.bytes / self.elapsed_time if self.elapsed_time > 0 else 0
 
     def download_piece_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
         for piece in range(start_piece, end_piece):
@@ -231,6 +233,8 @@ class Peer:
             self.combine_pieces_into_file(destination, total_pieces)
             self.bytes += total_length
             logging.info("Download completed.")
+            logging.info(f"Download time: {self.elapsed_time:.2f} seconds.")
+            logging.info(f"Average download speed: {self.average_speed / (1024 * 1024):.2f} MB/s.")
 
     def decode_peer_message(self, peer_message):
         message_length = int.from_bytes(peer_message[:4], "big")
