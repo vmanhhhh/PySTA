@@ -41,8 +41,6 @@ class Peer:
         self.port = None
         self.bytes = 0
         self.lock = threading.Lock()
-        self.elapsed_time = 0
-        self.average_speed = 0
     
     def find_available_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
@@ -120,6 +118,10 @@ class Peer:
                 formatted_ip_addresses = [(ip.strip(), int(port.strip())) for pair in ip_port_pairs for ip, port in [pair.split(":")] if port.strip() != str(self.port)]
                 logging.info(f"Formatted IP addresses: {formatted_ip_addresses}")
 
+                if len(formatted_ip_addresses) == 0:
+                    logging.error("No peers available for download.")
+                    return
+
                 with ThreadPoolExecutor(max_workers=len(formatted_ip_addresses)) as executor:
                     piece_length = decoded_str_keys["info"][b"piece length"]
                     total_length = decoded_str_keys["info"][b"length"]
@@ -130,10 +132,6 @@ class Peer:
 
                     total_pieces = math.ceil(total_length / piece_length)
                     logging.info(f"Total pieces: {total_pieces}")
-                    
-                    if len(formatted_ip_addresses) == 0:
-                        logging.error("No peers available for download.")
-                        return
 
                     pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
                     logging.info(f"Pieces per thread: {pieces_per_thread}")
@@ -150,8 +148,11 @@ class Peer:
             logging.error(f"Error downloading torrent file: {e}")
 
         end_time = time.time()  # End time for download
-        self.elapsed_time = end_time - start_time
-        self.average_speed = self.bytes / self.elapsed_time if self.elapsed_time > 0 else 0
+        elapsed_time = end_time - start_time
+        average_speed = bytes / elapsed_time if elapsed_time > 0 else 0
+        if (bytes):
+            logging.info(f"Download time: {elapsed_time:.2f} seconds.")
+            logging.info(f"Average download speed: {average_speed / (1024 * 1024):.2f} MB/s.")
 
     def download_piece_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
         for piece in range(start_piece, end_piece):
@@ -233,8 +234,6 @@ class Peer:
             self.combine_pieces_into_file(destination, total_pieces)
             self.bytes += total_length
             logging.info("Download completed.")
-            logging.info(f"Download time: {self.elapsed_time:.2f} seconds.")
-            logging.info(f"Average download speed: {self.average_speed / (1024 * 1024):.2f} MB/s.")
 
     def decode_peer_message(self, peer_message):
         message_length = int.from_bytes(peer_message[:4], "big")
