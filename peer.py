@@ -9,6 +9,7 @@ import math
 import logging
 from datetime import datetime
 from urllib.parse import urljoin
+import time
 
 # Constants
 PEER_DIRECTORY = "peer_directory"
@@ -129,6 +130,7 @@ class Peer:
                     pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
                     logging.info(f"Pieces per thread: {pieces_per_thread}")
                     start_piece = 0
+                    start_time = time.time()
                     for ip_address in formatted_ip_addresses:
                         end_piece = start_piece + pieces_per_thread
                         if end_piece > total_pieces:
@@ -140,6 +142,10 @@ class Peer:
                     # Wait for all threads to finish
                     for thread in threads:
                         thread.join()
+                    # Record the end time and calculate elapsed time
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    logging.info(f"Download completed in {elapsed_time:.2f} seconds.")
                 else:
                     logging.error("Error:", response.status_code)
             except Exception as e:
