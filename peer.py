@@ -7,9 +7,9 @@ import requests
 import hashlib
 import math
 import logging
+import time
 from datetime import datetime
 from urllib.parse import urljoin
-import time
 
 # Constants
 PEER_DIRECTORY = "peer_directory"
@@ -91,7 +91,17 @@ class Peer:
                 logging.error(f"Failed to announce to tracker. Status code: {response.status_code}")
         except Exception as e:
             logging.error(f"Error announceing torrent file: {e}")
-
+    def check_peer_active(self, ip_address):
+        peer_ip, peer_port = ip_address
+        try:
+            with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
+                sock.sendall(b"PING")
+                response = sock.recv(4)
+                if response == b"PONG":
+                    return True
+        except Exception as e:
+            logging.error(f"Error checking peer {ip_address}: {e}")
+        return False
     def retrieve_torrent_file(self, torrent_file_path, destination):
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
@@ -111,27 +121,31 @@ class Peer:
             try:
                 announce_url_down = announce_url + "/download"
                 response = requests.get(announce_url_down, params={"info_hash": info_hash})
-                # Kiểm tra mã trạng thái của phản hồi
                 if response.status_code == 200:
                     ip_port_pairs = response.text.split(",")
-                    # Duyệt qua từng cặp ip và port
                     formatted_ip_addresses = []
                     
                     for pair in ip_port_pairs:
                         ip, port = pair.strip().split(":")
                         if port != self.port:
                             formatted_ip_addresses.append((ip, int(port)))
-                    logging.info("Formatted IP addresses:", formatted_ip_addresses)
+                    logging.info("Formatted IP addresses: %s", formatted_ip_addresses)
+                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip)]
+                    logging.info(f"Total peers: {len(formatted_ip_addresses)}")
+                    logging.info(f"Active peers: {active_peers}")
+
+                    if not active_peers:
+                        logging.error("No active peers found.")
+                        return
 
                     threads = []
                     total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
                     logging.info(f"Total pieces: {total_pieces}")
-                    logging.info(f"Total peers: {formatted_ip_addresses}")
                     pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
                     logging.info(f"Pieces per thread: {pieces_per_thread}")
                     start_piece = 0
                     start_time = time.time()
-                    for ip_address in formatted_ip_addresses:
+                    for ip_address in active_peers:
                         end_piece = start_piece + pieces_per_thread
                         if end_piece > total_pieces:
                             end_piece = total_pieces
@@ -142,10 +156,9 @@ class Peer:
                     # Wait for all threads to finish
                     for thread in threads:
                         thread.join()
-                    # Record the end time and calculate elapsed time
                     end_time = time.time()
                     elapsed_time = end_time - start_time
-                    logging.info(f"Time elapsed: {elapsed_time:.2f} seconds")
+                    logging.info(f"Time elapsed {elapsed_time:.2f} seconds")
                 else:
                     logging.error("Error:", response.status_code)
             except Exception as e:
