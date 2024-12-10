@@ -97,7 +97,7 @@ class Peer:
             with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
                 sock.sendall(b"PING")
                 response = sock.recv(4)
-                if response == b"PONG":
+                if response:
                     return True
         except Exception as e:
             logging.error(f"Error checking peer {ip_address}: {e}")
@@ -345,7 +345,12 @@ class Peer:
                     data, url = parts
                     logging.info(f"Data: {data}")
                     logging.info(f"URL: {url}")
-                
+                else:
+                    data = parts[0]
+                    url = None
+                    logging.info(f"Info hash: {data}")
+                    logging.info("URL not provided")
+
                 found_files = self.locate_file_by_infohash(data, url)
                 logging.info(f"Found files: {found_files}")
                 if found_files:

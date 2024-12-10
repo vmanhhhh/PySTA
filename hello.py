@@ -1,69 +1,55 @@
-    def retrieve_torrent_file(self, torrent_file_path, destination):
-        torrent_file_name = os.path.basename(torrent_file_path)
-        file_name_without_extension = os.path.splitext(torrent_file_name)[0]
-        file_path = os.path.join(destination, file_name_without_extension)
-        destination = file_path
+    def process_peer_request(self, client_socket, client_address):
         try:
-            with open(torrent_file_path, 'rb') as torrent_file:
-                torrent_data = torrent_file.read()
-            
-            decoded_torrent = bencodepy.decode(torrent_data)
-            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            data = client_socket.recv(BUFFER_SIZE)
+            logging.info(f"Received data from {client_address}: {data}")
 
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
-            announce_url = decoded_torrent[b"announce"].decode()
-
-            try:
-                announce_url_down = announce_url + "/download"
-                response = requests.get(announce_url_down, params={"info_hash": info_hash})
-                if response.status_code == 200:
-                    ip_port_pairs = response.text.split(",")
-                    formatted_ip_addresses = []
-                    
-                    for pair in ip_port_pairs:
-                        ip, port = pair.strip().split(":")
-                        if port != self.port:
-                            formatted_ip_addresses.append((ip, int(port)))
-                    logging.info("Formatted IP addresses: %s", formatted_ip_addresses)
-
-                    # Filter out inactive peers
-                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip)]
-                    logging.info(f"Active peers: {active_peers}")
-
-                    if not active_peers:
-                        logging.error("No active peers found.")
-                        return
-
-                    threads = []
-                    total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
-                    logging.info(f"Total pieces: {total_pieces}")
-                    logging.info(f"Total active peers: {active_peers}")
-                    pieces_per_thread = total_pieces // len(active_peers) + 1
-                    logging.info(f"Pieces per thread: {pieces_per_thread}")
-                    start_piece = 0
-
-                    # Record the start time
-                    start_time = time.time()
-
-                    for ip_address in active_peers:
-                        end_piece = start_piece + pieces_per_thread
-                        if end_piece > total_pieces:
-                            end_piece = total_pieces
-                        thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces))
-                        threads.append(thread)
-                        start_piece = end_piece
-                        thread.start()
-                    # Wait for all threads to finish
-                    for thread in threads:
-                        thread.join()
-
-                    # Record the end time and calculate elapsed time
-                    end_time = time.time()
-                    elapsed_time = end_time - start_time
-                    logging.info(f"Download completed in {elapsed_time:.2f} seconds.")
+            if data:
+                decoded_data = data.decode('utf-8')
+                parts = decoded_data.split(' ', 1)
+                if len(parts) == 2:
+                    info_hash, url = parts
+                    logging.info(f"Info hash: {info_hash}")
+                    logging.info(f"URL: {url}")
                 else:
-                    logging.error("Error: %s", response.status_code)
-            except Exception as e:
-                logging.error(f"Error connecting to tracker: {e}")
+                    info_hash = parts[0]
+                    url = None
+                    logging.info(f"Info hash: {info_hash}")
+                    logging.info("URL not provided")
+
+                found_files = self.locate_file_by_infohash(info_hash, url)
+                logging.info(f"Found files: {found_files}")
+                if found_files:
+                    client_socket.sendall(b"OK")
+                    client_socket.recv(BUFFER_SIZE).decode()
+                    unchoke_payload = self.generate_unchoke_message()
+                    client_socket.sendall(unchoke_payload)
+                    while True:
+                        request_length = int.from_bytes(client_socket.recv(4), "big")
+                        request_id = int.from_bytes(client_socket.recv(1), "big")
+                        logging.info(f"Received request ID: {request_id}")
+                        if request_id != 6:
+                            logging.info("Download completed. Closing connection.")
+                            break
+                        
+                        request_data = client_socket.recv(request_length - 1)
+                        piece_index = int.from_bytes(request_data[:4], "big")
+                        offset = int.from_bytes(request_data[4:8], "big")
+                        block_length = int.from_bytes(request_data[8:], "big")
+                        
+                        response_data = self.handle_piece_request(piece_index, offset, block_length, found_files[0])
+                        
+                        response_length = len(response_data) + 9
+                        response_payload = (
+                            response_length.to_bytes(4, "big")
+                            + (7).to_bytes(1, "big")
+                            + piece_index.to_bytes(4, "big")
+                            + offset.to_bytes(4, "big")
+                            + response_data
+                        )
+                        client_socket.sendall(response_payload)
+                else:
+                    client_socket.sendall(b"NOT FOUND")
+            else:
+                logging.error("Cannot extract info hash from handshake data.")
         except Exception as e:
-            logging.error(f"Error downloading torrent file: {e}")
+            logging.error(f"Error handling peer request: {e}")
