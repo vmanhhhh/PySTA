@@ -1,6 +1,6 @@
 # PySTA
 
-PySTA is   Simple Torrent-like Application (STA) with the protocols defined by each group, using
+PySTA is a Simple Torrent-like Application (STA) with the protocols defined by each group, using
 the TCP/IP protocol stack and must support multi-direction data transfering (MDDT).
 
 ## Features
@@ -25,7 +25,7 @@ To run Tracker
 ```
 python3 tracker.py
 ```
-Tracker URL is: `http://<your_tracker_ip>:6880`
+Tracker URL is: `http://<your_tracker_ip>:6880/announce`
 
 To run Peer
 ```
