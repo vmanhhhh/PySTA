@@ -151,7 +151,7 @@ class Peer:
         end_time = time.time()  # End time for download
         elapsed_time = end_time - start_time
         average_speed = bytes / elapsed_time if elapsed_time > 0 else 0
-        if (bytes):
+        if (bytes > 0):
             logging.info(f"Download time: {elapsed_time:.2f} seconds.")
             logging.info(f"Average download speed: {average_speed / (1024 * 1024):.2f} MB/s.")
 
