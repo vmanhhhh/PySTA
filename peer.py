@@ -7,9 +7,7 @@ import requests
 import hashlib
 import math
 import logging
-import time
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urljoin
 
 # Constants
@@ -94,7 +92,6 @@ class Peer:
             logging.error(f"Error announceing torrent file: {e}")
 
     def retrieve_torrent_file(self, torrent_file_path, destination):
-        start_time = time.time()  # Start time for download
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
         file_path = os.path.join(destination, file_name_without_extension)
@@ -105,70 +102,52 @@ class Peer:
             
             decoded_torrent = bencodepy.decode(torrent_data)
             decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
 
+            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
-            # Remove '/announce' from the announce_url
-            base_url = announce_url.rsplit('/', 1)[0]
                 
-            announce_url_down = f"{base_url}{TRACKER_SCRAPE_PATH}"
-            logging.info(f"Scrape URL: {announce_url_down}")
-            response = requests.get(announce_url_down, params={"info_hash": info_hash})
-            logging.info(f"Tracker response status code: {response.status_code}")
-            logging.info(f"Tracker response text: {response.text}")
-            if response.status_code == 200:
-                ip_port_pairs = response.text.split(",")
-                logging.info(f"IP-Port pairs: {ip_port_pairs}")
-                formatted_ip_addresses = []
-                for pair in ip_port_pairs:
-                    try:
+            try:
+                announce_url_down = announce_url + "/download"
+                response = requests.get(announce_url_down, params={"info_hash": info_hash})
+                # Kiểm tra mã trạng thái của phản hồi
+                if response.status_code == 200:
+                    ip_port_pairs = response.text.split(",")
+                    # Duyệt qua từng cặp ip và port
+                    formatted_ip_addresses = []
+                    
+                    for pair in ip_port_pairs:
                         ip, port = pair.strip().split(":")
                         if port != self.port:
                             formatted_ip_addresses.append((ip, int(port)))
-                        else:
-                            logging.error(f"Invalid IP-Port pair: '{pair}'")
-                    except ValueError as e:
-                        logging.error(f"Error parsing IP-Port pair '{pair}': {e}")
-                logging.info(f"Formatted IP addresses: {formatted_ip_addresses}")
+                    print("Formatted IP addresses:", formatted_ip_addresses)
 
-                if len(formatted_ip_addresses) == 0:
-                    logging.error("No peers available for download.")
-                    return
-
-                piece_length = decoded_str_keys["info"][b"piece length"]
-                total_length = decoded_str_keys["info"][b"length"]
-                
-                if piece_length == 0:
-                    logging.error("Piece length is zero, cannot proceed with download.")
-                    return
-
-                total_pieces = math.ceil(total_length / piece_length)
-                logging.info(f"Total pieces: {total_pieces}")
-
-                with ThreadPoolExecutor(max_workers=len(formatted_ip_addresses)) as executor:
-                    for piece in range(total_pieces):
-                        peer_index = piece % len(formatted_ip_addresses)
-                        ip_address = formatted_ip_addresses[peer_index]
-                        executor.submit(self.download_piece, ip_address, torrent_data, destination, piece, announce_url, total_pieces)
-            else:
-                logging.error(f"Error: {response.status_code}")
+                    threads = []
+                    total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
+                    print(f"Total pieces: {total_pieces}")
+                    pieces_per_thread = total_pieces // len(formatted_ip_addresses) + 1
+                    print(f"Pieces per thread: {pieces_per_thread}")
+                    start_piece = 0
+                    for ip_address in formatted_ip_addresses:
+                        end_piece = start_piece + pieces_per_thread
+                        if end_piece > total_pieces:
+                            end_piece = total_pieces
+                        thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces))
+                        threads.append(thread)
+                        start_piece = end_piece
+                        thread.start()
+                    # Wait for all threads to finish
+                    for thread in threads:
+                        thread.join()
+                else:
+                    print("Error:", response.status_code)
+            except Exception as e:
+                print(f"Error connecting to tracker: {e}")
         except Exception as e:
-            logging.error(f"Error downloading torrent file: {e}")
+            print(f"Error downloading torrent file: {e}")
 
-        end_time = time.time()  # End time for download
-        elapsed_time = end_time - start_time
-
-        downloaded_pieces = [f"{destination}_piece_{piece}" for piece in range(total_pieces)]
-        d = len(list(piece_file for piece_file in downloaded_pieces if os.path.exists(piece_file)))
-
-        logging.info(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
-        if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
-            self.combine_pieces_into_file(destination, total_pieces)
-            self.bytes += total_length
-            logging.info("Download completed.")
-            average_speed = self.bytes / elapsed_time if elapsed_time > 0 else 0
-            logging.info(f"Download time: {elapsed_time:.2f} seconds.")
-            logging.info(f"Average download speed: {average_speed / (1024 * 1024):.2f} MB/s.")
+    def download_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
+        for piece in range(start_piece, end_piece):
+            self.download_piece(ip_address, file_data, destination, str(piece), announce_url, total_pieces)
 
     def download_piece(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
         peer_ip, peer_port = ip_address
@@ -178,16 +157,17 @@ class Peer:
         payload = sha1 + " " + announce_url
         sock.sendall(payload.encode('utf-8'))
         
-        response = sock.recv(BUFFER_SIZE).decode('utf-8')
+        response = sock.recv(1024).decode('utf-8')
         if response == "OK":
+            # send interested message
             interested_payload = (2).to_bytes(4, "big") + (2).to_bytes(1, "big")
             sock.send(interested_payload)
+            # received unchoke message
             unchoke_msg = sock.recv(5)
-            logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
-            message_length, message_id = self.decode_peer_message(unchoke_msg)
+            print(f"Received unchoke message from {ip_address}: {unchoke_msg}")
+            message_length, message_id = self.parse_peer_message(unchoke_msg)
             if message_id != 1:
-                logging.error(f"Unexpected message ID: {message_id}, expected 1 (unchoke)")
-                return
+                raise SystemError("Expecting unchoke id of 1")
 
             decoded_torrent = bencodepy.decode(file_data)
             decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
@@ -230,17 +210,25 @@ class Peer:
                     full_block += block
                     received += len(block)
                 final_block += full_block
-                logging.info(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
+                print(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
         
         try:
+            # Lưu dữ liệu của piece vào tệp tạm thời
             with open(piece_filename, "wb") as f:
                 f.write(final_block)
         except Exception as e:
-            logging.error(e)
+            print(e)
 
-    def download_piece_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
-        for piece in range(start_piece, end_piece):
-            self.fetch_piece_from_peer(ip_address, file_data, destination, str(piece), announce_url, total_pieces)
+        # Kiểm tra xem tất cả các phần đã được tải xong chưa
+        downloaded_pieces = [f"{destination}_piece_{piece}" for piece in range(total_pieces)]
+        d = len(list(piece_file for piece_file in downloaded_pieces if os.path.exists(piece_file)))
+
+        print(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
+        if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
+            self.merge_temp_files(destination, math.ceil(total_length / piece_length))
+            self.bytes += total_length  # Cập nhật số byte đã tải
+            print("Download completed.")
+
 
     def fetch_piece_from_peer(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
         peer_ip, peer_port = ip_address
