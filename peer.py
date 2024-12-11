@@ -87,8 +87,10 @@ class Peer:
             response = requests.get(tracker_url, params=params)
             if response.status_code == 200:
                 logging.info("Announce to tracker successfully.")
+                logging.info(f"Tracker response: {response.text}")
             else:
                 logging.error(f"Failed to announce to tracker. Status code: {response.status_code}")
+                logging.error(f"Tracker response: {response.text}")
         except Exception as e:
             logging.error(f"Error announceing torrent file: {e}")
     def check_peer_active(self, ip_address):
@@ -127,6 +129,23 @@ class Peer:
 
         for thread in threads:
             thread.join()
+
+    def measure_bandwidth(self, ip_address):
+        peer_ip, peer_port = ip_address
+        try:
+            start_time = time.time()
+            with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
+                sock.sendall(b"PING")
+                response = sock.recv(1024)
+                if response:
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    bandwidth = len(response) / elapsed_time
+                    logging.info(f"Measured bandwidth for {peer_ip}:{peer_port} is {bandwidth:.2f} bytes/second.")
+                    return bandwidth
+        except Exception as e:
+            logging.error(f"Error measuring bandwidth for {peer_ip}:{peer_port}: {e}")
+        return 0
     def retrieve_torrent_file(self, torrent_file_path, destination):
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
@@ -162,15 +181,18 @@ class Peer:
                     if not active_peers:
                         logging.error("No active peers found.")
                         return
+                    # Measure bandwidth for each active peer
+                    peer_bandwidths = {ip: self.measure_bandwidth(ip) for ip in active_peers}
+                    sorted_peers = sorted(peer_bandwidths.items(), key=lambda item: item[1], reverse=True)
+                    logging.info(f"Peers sorted by bandwidth: {sorted_peers}")
 
                     threads = []
                     total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
                     logging.info(f"Total pieces: {total_pieces}")
-                    pieces_per_thread = total_pieces // len(active_peers) + 1
-                    logging.info(f"Pieces per thread: {pieces_per_thread}")
                     start_piece = 0
                     start_time = time.time()
-                    for ip_address in active_peers:
+                    for ip_address, bandwidth in sorted_peers:
+                        pieces_per_thread = max(1, int(total_pieces * (bandwidth / sum(peer_bandwidths.values()))))
                         end_piece = start_piece + pieces_per_thread
                         if end_piece > total_pieces:
                             end_piece = total_pieces
@@ -184,6 +206,7 @@ class Peer:
                     end_time = time.time()
                     elapsed_time = end_time - start_time
                     logging.info(f"Time elapsed {elapsed_time:.2f} seconds")
+
                 else:
                     logging.error("Error:", response.status_code)
             except Exception as e:
@@ -259,13 +282,11 @@ class Peer:
                 logging.info(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
         
         try:
-            # Lưu dữ liệu của piece vào tệp tạm thời
             with open(piece_filename, "wb") as f:
                 f.write(final_block)
         except Exception as e:
             logging.error(e)
 
-        # Kiểm tra xem tất cả các phần đã được tải xong chưa
         downloaded_pieces = [f"{destination}_piece_{piece}" for piece in range(total_pieces)]
         d = len(list(piece_file for piece_file in downloaded_pieces if os.path.exists(piece_file)))
 

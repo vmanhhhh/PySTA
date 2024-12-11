@@ -46,11 +46,11 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
         port = query_params.get('port', [None])[0]
 
         if info_hash and port:
-            self.update_seeder_info(port, info_hash, client_ip)
+            status_message = self.update_seeder_info(port, info_hash, client_ip)
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write(b"OK")
+            self.wfile.write(status_message.encode())
         else:
             self.send_error(400, "Bad Request")
 
@@ -86,10 +86,10 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
             seeder_exists = False
             for i, line in enumerate(lines):
                 if info_hash in line:
-                    seeder_ports = line.split(':')[1].strip().split(',')
-                    if port in seeder_ports:
-                        logging.info(f"Port {port} already exists for {info_hash}. Skipping update.")
-                        return
+                    seeder_ports = line.split(': ')[1].strip().split(', ')
+                    if seeder_info in seeder_ports:
+                        logging.info(f"Seeder {seeder_info} already exists for {info_hash}. Skipping update.")
+                        return (f"Seeder {seeder_info} already exists for {info_hash}. Skipping update.")
                     else:
                         seeder_exists = True
                         lines[i] = line.rstrip() + f", {seeder_info}\n"
