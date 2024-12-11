@@ -46,6 +46,12 @@ class Peer:
         loop.run_until_complete(self.dht_server.listen(6881))
         bootstrap_node = ("bootstrap.kadnode.org", 6881)
         loop.run_until_complete(self.dht_server.bootstrap([bootstrap_node]))
+    def bootstrap_dht(self, bootstrap_nodes):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.dht_server.bootstrap(bootstrap_nodes))
+        loop.close()
+        logging.info(f"Bootstrapped DHT with nodes: {bootstrap_nodes}")
 
     def store_info_hash_in_dht(self, torrent_file_path):
         info_hash = self.create_info_hash(torrent_file_path)
@@ -572,6 +578,12 @@ if __name__ == "__main__":
                     break
                 elif command.lower() == "help":
                     peer.display_help()
+                elif command.startswith("bootstrap"):
+                    if len(command_parts) >= 3:
+                        bootstrap_nodes = [(command_parts[i], int(command_parts[i+1])) for i in range(1, len(command_parts), 2)]
+                        peer.bootstrap_dht(bootstrap_nodes)
+                    else:
+                        logging.error("Invalid command: Missing arguments for bootstrap.")
                 elif command.startswith("downloads"):
                     if len(command_parts) >= 3:
                         torrent_files = [file.strip('"\'') for file in command_parts[1:-1]]
