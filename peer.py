@@ -37,15 +37,18 @@ logging.basicConfig(
 )
 
 class Peer:
-    def __init__(self):
+    def __init__(self, bootstrap_node=("192.168.1.3", 6881)):
         self.listen_socket = None 
         self.port = None
         self.bytes = 0
         self.dht_server = Server()
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(self.dht_server.listen(6881))
-        bootstrap_node = ("bootstrap.kadnode.org", 6881)
+        logging.info("DHT server is listening on port 6881")
         loop.run_until_complete(self.dht_server.bootstrap([bootstrap_node]))
+        logging.info(f"Bootstrapped DHT with initial node: {bootstrap_node}")
+
     def bootstrap_dht(self, bootstrap_nodes):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -57,13 +60,17 @@ class Peer:
         info_hash = self.create_info_hash(torrent_file_path)
         peer_info = f"{get_local_ip()}:{self.port}"
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(self.dht_server.set(info_hash, peer_info))
+        loop.close()
         logging.info(f"Stored info hash {info_hash} with peer info {peer_info} in DHT")
 
     def find_peers_in_dht(self, torrent_file_path):
         info_hash = self.create_info_hash(torrent_file_path)
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         result = loop.run_until_complete(self.dht_server.get(info_hash))
+        loop.close()
         logging.info(f"Found peers for info hash {info_hash}: {result}")
         return result
 
@@ -350,11 +357,11 @@ class Peer:
                 request_data = (
                     int(piece).to_bytes(4, "big")
                     + offset.to_bytes(4, "big")
-                    + block_length.to_bytes(4, "big")
+                    + block_length.to.bytes(4, "big")
                 )
                 request_payload = (
-                    (len(request_data) + 1).to_bytes(4, "big")
-                    + (6).to_bytes(1, "big")
+                    (len(request_data) + 1).to.bytes(4, "big")
+                    + (6).to.bytes(1, "big")
                     + request_data
                 )
                 sock.send(request_payload)
