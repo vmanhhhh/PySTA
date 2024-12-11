@@ -251,7 +251,7 @@ class Peer:
         response = sock.recv(1024).decode('utf-8')
         if response == "OK":
             # send interested message
-            interested_payload = (2).to_bytes(4, "big") + (2).to_bytes(1, "big")
+            interested_payload = (2).to_bytes(4, "big") + (2).to.bytes(1, "big")
             sock.send(interested_payload)
             # received unchoke message
             unchoke_msg = sock.recv(5)
@@ -275,13 +275,13 @@ class Peer:
             for offset in range(0, piece_length, bit_size):
                 block_length = min(bit_size, piece_length - offset)
                 request_data = (
-                    int(piece).to_bytes(4, "big")
-                    + offset.to_bytes(4, "big")
-                    + block_length.to_bytes(4, "big")
+                    int(piece).to.bytes(4, "big")
+                    + offset.to.bytes(4, "big")
+                    + block_length.to.bytes(4, "big")
                 )
                 request_payload = (
-                    (len(request_data) + 1).to_bytes(4, "big")
-                    + (6).to_bytes(1, "big")
+                    (len(request_data) + 1).to.bytes(4, "big")
+                    + (6).to.bytes(1, "big")
                     + request_data
                 )
                 sock.send(request_payload)
@@ -331,7 +331,7 @@ class Peer:
         
         response = sock.recv(BUFFER_SIZE).decode('utf-8')
         if response == "OK":
-            interested_payload = (2).to_bytes(4, "big") + (2).to_bytes(1, "big")
+            interested_payload = (2).to.bytes(4, "big") + (2).to.bytes(1, "big")
             sock.send(interested_payload)
             unchoke_msg = sock.recv(5)
             logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
@@ -355,8 +355,8 @@ class Peer:
             for offset in range(0, piece_length, bit_size):
                 block_length = min(bit_size, piece_length - offset)
                 request_data = (
-                    int(piece).to_bytes(4, "big")
-                    + offset.to_bytes(4, "big")
+                    int(piece).to.bytes(4, "big")
+                    + offset.to.bytes(4, "big")
                     + block_length.to.bytes(4, "big")
                 )
                 request_payload = (
@@ -445,10 +445,10 @@ class Peer:
                         
                         response_length = len(response_data) + 9
                         response_payload = (
-                            response_length.to_bytes(4, "big")
-                            + (7).to_bytes(1, "big")
-                            + piece_index.to_bytes(4, "big")
-                            + offset.to_bytes(4, "big")
+                            response_length.to.bytes(4, "big")
+                            + (7).to.bytes(1, "big")
+                            + piece_index.to.bytes(4, "big")
+                            + offset.to.bytes(4, "big")
                             + response_data
                         )
                         client_socket.sendall(response_payload)
@@ -492,8 +492,8 @@ class Peer:
         return found_files
 
     def generate_unchoke_message(self):
-        message_length = (1).to_bytes(4, "big")
-        message_id = (1).to_bytes(1, "big")
+        message_length = (1).to.bytes(4, "big")
+        message_id = (1).to.bytes(1, "big")
         unchoke_payload = message_length + message_id
         return unchoke_payload
 
@@ -565,7 +565,8 @@ def get_local_ip():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    peer = Peer()
+    bootstrap_node = ("192.168.64.3", 6881)  # Bootstrap node address for Peer 1
+    peer = Peer(bootstrap_node=bootstrap_node)
     try:
         peer.port = peer.find_available_port()
         logging.info(f"Peer is listening on {get_local_ip()}:{peer.port}")
