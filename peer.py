@@ -5,6 +5,8 @@ import threading
 import torrent_utils
 import requests
 import hashlib
+from kademlia.network import Server 
+import asyncio
 import math
 import logging
 import time
@@ -39,7 +41,31 @@ class Peer:
         self.listen_socket = None 
         self.port = None
         self.bytes = 0
-    
+        self.dht_server = Server()
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(self.dht_server.listen(6881))
+        bootstrap_node = ("bootstrap.kadnode.org", 6881)
+        loop.run_until_complete(self.dht_server.bootstrap([bootstrap_node]))
+
+    def store_info_hash_in_dht(self, torrent_file_path):
+        info_hash = self.create_info_hash(torrent_file_path)
+        peer_info = f"{get_local_ip()}:{self.port}"
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(self.dht_server.set(info_hash, peer_info))
+        logging.info(f"Stored info hash {info_hash} with peer info {peer_info} in DHT")
+
+    def find_peers_in_dht(self, torrent_file_path):
+        info_hash = self.create_info_hash(torrent_file_path)
+        loop = asyncio.new_event_loop()
+        result = loop.run_until_complete(self.dht_server.get(info_hash))
+        logging.info(f"Found peers for info hash {info_hash}: {result}")
+        return result
+
+    def create_info_hash(self, torrent_file_path):
+        with open(torrent_file_path, 'rb') as torrent_file:
+            torrent_data = torrent_file.read()
+        return hashlib.sha1(torrent_data).hexdigest()
+
     def find_available_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
             try:
@@ -76,6 +102,7 @@ class Peer:
         torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
     def announce_torrent_to_tracker(self, file_path, tracker_url):
+        self.store_info_hash_in_dht(file_path)
         try:
             with open(file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
@@ -128,6 +155,11 @@ class Peer:
         for thread in threads:
             thread.join()
     def retrieve_torrent_file(self, torrent_file_path, destination):
+        peers = self.find_peers_in_dht(torrent_file_path)
+        if not peers:
+            logging.error("No peers found in DHT.")
+            return
+
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
         file_path = os.path.join(destination, file_name_without_extension)
