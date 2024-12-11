@@ -193,7 +193,7 @@ class Peer:
                     start_time = time.time()
                     for ip_address, bandwidth in sorted_peers:
                         pieces_per_thread = max(1, int(total_pieces * (bandwidth / sum(peer_bandwidths.values()))))
-                        end_piece = start_piece + pieces_per_thread
+                        end_piece = start_piece + pieces_per_thread + 1
                         if end_piece > total_pieces:
                             end_piece = total_pieces
                         thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces))
