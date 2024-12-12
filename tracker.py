@@ -120,7 +120,6 @@ def get_local_ip():
     try:
         # Create a socket to test connectivity
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            # Use a public address to determine the local IP (doesn't actually connect)
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
     except Exception as e:

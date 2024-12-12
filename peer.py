@@ -38,7 +38,8 @@ class Peer:
     def __init__(self):
         self.listen_socket = None 
         self.port = None
-        self.bytes = 0
+        self.d_bytes = 0
+        self.u_bytes = 0
     
     def find_available_port(self, start_port=6881, end_port=65535):
         for port in range(start_port, end_port + 1):
@@ -226,85 +227,6 @@ class Peer:
         payload = sha1 + " " + announce_url
         sock.sendall(payload.encode('utf-8'))
         
-        response = sock.recv(1024).decode('utf-8')
-        if response == "OK":
-            # send interested message
-            interested_payload = (2).to_bytes(4, "big") + (2).to_bytes(1, "big")
-            sock.send(interested_payload)
-            # received unchoke message
-            unchoke_msg = sock.recv(5)
-            logging.info(f"Received unchoke message from {ip_address}: {unchoke_msg}")
-            message_length, message_id = self.decode_peer_message(unchoke_msg)
-            if message_id != 1:
-                raise SystemError("Expecting unchoke id of 1")
-
-            decoded_torrent = bencodepy.decode(file_data)
-            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-            
-            bit_size = 16 * 1024
-            final_block = b""
-            piece_length = decoded_str_keys["info"][b"piece length"]
-            total_length = decoded_str_keys["info"][b"length"]
-            if int(piece) == math.ceil(total_length / piece_length) - 1:
-                piece_length = total_length % piece_length
-            
-            piece_filename = f"{destination}_piece_{piece}"
-            
-            for offset in range(0, piece_length, bit_size):
-                block_length = min(bit_size, piece_length - offset)
-                request_data = (
-                    int(piece).to_bytes(4, "big")
-                    + offset.to_bytes(4, "big")
-                    + block_length.to_bytes(4, "big")
-                )
-                request_payload = (
-                    (len(request_data) + 1).to_bytes(4, "big")
-                    + (6).to_bytes(1, "big")
-                    + request_data
-                )
-                sock.send(request_payload)
-
-                message_length = int.from_bytes(sock.recv(4), "big")
-                message_id = int.from_bytes(sock.recv(1), "big")
-                if message_id != 7:
-                    logging.error(f"Unexpected message ID: {message_id}, expected 7 (piece)")
-                    return
-                int.from_bytes(sock.recv(4), "big")
-                int.from_bytes(sock.recv(4), "big")
-                received = 0
-                full_block = b""
-                size_of_block = message_length - 9
-                while received < size_of_block:
-                    block = sock.recv(size_of_block - received)
-                    full_block += block
-                    received += len(block)
-                final_block += full_block
-                logging.info(f"Downloading piece {piece}, offset {offset}, block length {block_length} from {ip_address}")
-        
-        try:
-            with open(piece_filename, "wb") as f:
-                f.write(final_block)
-        except Exception as e:
-            logging.error(e)
-
-        downloaded_pieces = [f"{destination}_piece_{piece}" for piece in range(total_pieces)]
-        d = len(list(piece_file for piece_file in downloaded_pieces if os.path.exists(piece_file)))
-
-        logging.info(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
-        if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
-            self.combine_pieces_into_file(destination, total_pieces)
-            self.bytes += total_length  # Cập nhật số byte đã tải
-            logging.info("Download completed.")
-
-
-    def fetch_piece_from_peer(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
-        peer_ip, peer_port = ip_address
-        sock = socket.create_connection((peer_ip, peer_port))
-        
-        sha1 = str(hashlib.sha1(file_data).hexdigest())
-        payload = sha1 + " " + announce_url
-        sock.sendall(payload.encode('utf-8'))
-        
         response = sock.recv(BUFFER_SIZE).decode('utf-8')
         if response == "OK":
             interested_payload = (2).to_bytes(4, "big") + (2).to_bytes(1, "big")
@@ -371,8 +293,9 @@ class Peer:
         logging.info(f"Downloaded {d} pieces out of {len(downloaded_pieces)}")
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
-            self.bytes += total_length
+            self.d_bytes += total_length
             logging.info("Download completed.")
+
 
     def decode_peer_message(self, peer_message):
         message_length = int.from_bytes(peer_message[:4], "big")
@@ -479,6 +402,7 @@ class Peer:
             file.seek(piece_start_position)
             logging.info(f"Reading piece {piece_index}, offset {offset}, block length {block_length}")
             data = file.read(block_length)
+            self.u_bytes += len(data)
         return data
 
     def combine_pieces_into_file(self, destination, total_pieces):
@@ -555,8 +479,10 @@ if __name__ == "__main__":
                 command_parts = command.split()
 
                 if command.lower() == "stop":
-                    logging.info(f"Number of bytes downloaded: {peer.bytes}")
-                    logging.info(f"Number of megabytes downloaded: {peer.bytes / (1024 * 1024):.2f}")
+                    logging.info(f"Number of bytes downloaded: {peer.d_bytes}")
+                    logging.info(f"Number of megabytes downloaded: {peer.d_bytes / (1024 * 1024):.2f}")
+                    logging.info(f"Number of bytes uploaded: {peer.u_bytes}")
+                    logging.info(f"Number of megabytes uploaded: {peer.u_bytes / (1024 * 1024):.2f}")
                     peer.listen_socket.close()
                     break
                 elif command.lower() == "help":

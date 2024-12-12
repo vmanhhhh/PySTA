@@ -34,12 +34,12 @@ python3 peer.py
 
 ## Usage
 Available commands:
-    - create <file_path> <file_dir> <tracker_url>: Create a torrent file.
-    - announce <torrent_file_path> <tracker_url>: Announce a torrent file to the tracker.
-    - download <torrent_file_path> <destination>: Download a file using a torrent.
-    - downloads <torrent_file1> <torrent_file2> ... <destination>: Download multiple files using torrents
-    - scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
-    - create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
-    - ping <ip_address>: Ping a peer.
-    - stop: Stop the peer and exit.
-    - help: Display this help message.
+- create <file_path> <file_dir> <tracker_url>: Create a torrent file.
+- announce <torrent_file_path> <tracker_url>: Announce a torrent file to the tracker.
+- download <torrent_file_path> <destination>: Download a file using a torrent.
+- downloads <torrent_file1> <torrent_file2> ... <destination>: Download multiple files using torrents
+- scrape <torrent_file_path> <tracker_url>: Scrape the tracker for torrent information.
+- create_announce <file_path> <file_dir> <tracker_url>: Create a torrent file and announce it to the tracker.
+- ping <ip_address>: Ping a peer.
+- stop: Stop the peer and exit.
+- help: Display this help message.
