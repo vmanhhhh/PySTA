@@ -94,17 +94,24 @@ class Peer:
                 logging.error(f"Tracker response: {response.text}")
         except Exception as e:
             logging.error(f"Error announceing torrent file: {e}")
-    def check_peer_active(self, ip_address):
+    def check_peer_active(self, ip_address, info_hash):
         peer_ip, peer_port = ip_address
         try:
             with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
-                sock.sendall(b"PING")
-                response = sock.recv(4)
-                if response:
+                # Send a request to check if the peer is active and has the file
+                request_payload = f"CHECK {info_hash}".encode('utf-8')
+                sock.sendall(request_payload)
+                
+                # Expect a response from the peer
+                response = sock.recv(BUFFER_SIZE).decode('utf-8')
+                if response == "HAS FILE":
                     return True
+                else:
+                    logging.info(f"Peer {ip_address} does not have the file.")
         except Exception as e:
             logging.error(f"Error checking peer {ip_address}: {e}")
         return False
+    
     def ping_peer(self, ip_address):
         peer_ip, peer_port = ip_address
         try:
@@ -147,6 +154,7 @@ class Peer:
         except Exception as e:
             logging.error(f"Error measuring bandwidth for {peer_ip}:{peer_port}: {e}")
         return 0
+    
     def retrieve_torrent_file(self, torrent_file_path, destination):
         torrent_file_name = os.path.basename(torrent_file_path)
         file_name_without_extension = os.path.splitext(torrent_file_name)[0]
@@ -158,11 +166,10 @@ class Peer:
             
             decoded_torrent = bencodepy.decode(torrent_data)
             decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-
+    
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
-
-                
+    
             try:
                 announce_url_down = announce_url.replace("/announce", "/scrape")
                 response = requests.get(announce_url_down, params={"info_hash": info_hash})
@@ -175,10 +182,10 @@ class Peer:
                         if port != self.port:
                             formatted_ip_addresses.append((ip, int(port)))
                     logging.info("Formatted IP addresses: %s", formatted_ip_addresses)
-                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip)]
+                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip, info_hash)]
                     logging.info(f"Total peers: {len(formatted_ip_addresses)}")
                     logging.info(f"Active peers: {active_peers}")
-
+    
                     if not active_peers:
                         logging.error("No active peers found.")
                         return
@@ -186,7 +193,7 @@ class Peer:
                     peer_bandwidths = {ip: self.measure_bandwidth(ip) for ip in active_peers}
                     sorted_peers = sorted(peer_bandwidths.items(), key=lambda item: item[1], reverse=True)
                     logging.info(f"Peers sorted by bandwidth: {sorted_peers}")
-
+    
                     threads = []
                     total_pieces = math.ceil(decoded_str_keys["info"][b"length"] / decoded_str_keys["info"][b"piece length"])
                     logging.info(f"Total pieces: {total_pieces}")
@@ -207,7 +214,7 @@ class Peer:
                     end_time = time.time()
                     elapsed_time = end_time - start_time
                     logging.info(f"Time elapsed {elapsed_time:.2f} seconds")
-
+    
                 else:
                     logging.error("Error:", response.status_code)
             except Exception as e:
@@ -306,20 +313,29 @@ class Peer:
         try:
             data = client_socket.recv(BUFFER_SIZE)
             logging.info(f"Received data from {client_address}: {data}")
-
+    
             if data:
                 decoded_data = data.decode('utf-8')
                 parts = decoded_data.split(' ', 1)
                 if len(parts) == 2:
-                    data, url = parts
-                    logging.info(f"Data: {data}")
-                    logging.info(f"URL: {url}")
+                    command, info_hash = parts
+                    if command == "CHECK":
+                        found_files = self.locate_file_by_infohash(info_hash, None)
+                        if found_files:
+                            client_socket.sendall(b"HAS FILE")
+                        else:
+                            client_socket.sendall(b"NO FILE")
+                        return  # Exit after responding to the CHECK request
+                    else:
+                        data, url = parts
+                        logging.info(f"Data: {data}")
+                        logging.info(f"URL: {url}")
                 else:
                     data = parts[0]
                     url = None
                     logging.info(f"Info hash: {data}")
                     logging.info("URL not provided")
-
+    
                 found_files = self.locate_file_by_infohash(data, url)
                 logging.info(f"Found files: {found_files}")
                 if found_files:

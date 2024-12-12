@@ -102,8 +102,10 @@ class TrackerRequestHandler(BaseHTTPRequestHandler):
                 file.writelines(lines)
 
             logging.info(f"Seeder information updated for {info_hash}.")
+            return (f"Seeder information updated for {info_hash}.")
         except Exception as e:
             logging.error(f"Error updating seeder information: {e}")
+            return (f"Error updating seeder information: {e}")
 
     def find_seeder_info(self, file_path, target_string):
         try:
