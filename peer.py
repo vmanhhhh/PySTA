@@ -181,9 +181,9 @@ class Peer:
                         ip, port = pair.strip().split(":")
                         if port != self.port:
                             formatted_ip_addresses.append((ip, int(port)))
+                    logging.info(f"Total peers: {len(formatted_ip_addresses)}")
                     logging.info("Formatted IP addresses: %s", formatted_ip_addresses)
                     active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip, info_hash)]
-                    logging.info(f"Total peers: {len(formatted_ip_addresses)}")
                     logging.info(f"Active peers: {active_peers}")
     
                     if not active_peers:
