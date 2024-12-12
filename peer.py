@@ -316,8 +316,8 @@ class Peer:
     
             if data:
                 decoded_data = data.decode('utf-8')
-                parts = decoded_data.split(' ', 1)
-                if len(parts) == 2:
+                parts = decoded_data.split(' ', 2)
+                if len(parts) == 3:
                     command, info_hash, announce_url = parts
                     if command == "CHECK":
                         found_files = self.locate_file_by_infohash(info_hash, announce_url)
