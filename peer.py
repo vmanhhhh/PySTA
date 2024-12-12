@@ -394,7 +394,7 @@ class Peer:
         for file_path in file_paths:
             try:
                 os.access(file_path, os.R_OK)
-                calculated_infohash = torrent_utils.get_info_hash(file_path)
+                calculated_infohash = torrent_utils.get_info_hash(file_path,url)
                 if calculated_infohash is None:
                     logging.error(f"Error generating metadata for file: {file_path}")
                     continue
