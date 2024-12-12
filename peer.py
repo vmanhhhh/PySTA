@@ -329,11 +329,11 @@ class Peer:
                     else:
                         logging.error(f"Invalid command: {command}")
                         return
-                if len(parts) == 2:
+                elif len(parts) == 2:
                     data, url = parts
                     logging.info(f"Info hash: {data}")
                     logging.info(f"URL: {url}")
-                if len(parts) == 1:
+                elif len(parts) == 1:
                     if parts[0] == "PING":
                         client_socket.sendall(b"PONG")
                         logging.info(f"Responded to ping from {client_address}")
