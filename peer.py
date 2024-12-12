@@ -327,9 +327,17 @@ class Peer:
                             client_socket.sendall(b"NO FILE")
                         return  # Exit after responding to the CHECK request
                     else:
-                        data, url = parts
-                        logging.info(f"Data: {data}")
-                        logging.info(f"URL: {url}")
+                        logging.error(f"Invalid command: {command}")
+                        return
+                if len(parts) == 2:
+                    data, url = parts
+                    logging.info(f"Info hash: {data}")
+                    logging.info(f"URL: {url}")
+                if len(parts) == 1:
+                    if parts[0] == "PING":
+                        client_socket.sendall(b"PONG")
+                        logging.info(f"Responded to ping from {client_address}")
+                        return
                 else:
                     data = parts[0]
                     url = None
