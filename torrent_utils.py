@@ -36,14 +36,18 @@ def create_torrent(file_path, announce_url, output_file):
     except Exception as e:
         logging.error(f"Error creating torrent file: {e}")
         return None
-
-def get_info_hash(file_path, announce_url):
+    
+def get_info_hash(file_path):
     try:
-        metadata = generate_metadata(file_path, announce_url)
-        encoded_metadata = bencodepy.encode(metadata)
-        return hashlib.sha1(encoded_metadata).hexdigest()
+        with open(file_path, 'rb') as f:
+            torrent_data = f.read()
+        decoded_torrent = bencodepy.decode(torrent_data)
+        info = decoded_torrent[b'info']
+        info_bencoded = bencodepy.encode(info)
+        info_hash = hashlib.sha1(info_bencoded).hexdigest()
+        return info_hash
     except Exception as e:
-        logging.error(f"Error getting info hash: {e}")
+        logging.error(f"Unable to encode object: {e}")
         return None
 
 def generate_metadata(file_path, announce_url):

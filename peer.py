@@ -394,16 +394,21 @@ class Peer:
         for file_path in file_paths:
             try:
                 os.access(file_path, os.R_OK)
-                calculated_infohash = torrent_utils.get_info_hash(file_path, url)
+                calculated_infohash = torrent_utils.get_info_hash(file_path)
+                if calculated_infohash is None:
+                    logging.error(f"Error generating metadata for file: {file_path}")
+                    continue
                 logging.info(f"Calculated info hash: {calculated_infohash}")
                 logging.info(f"Received info hash: {infohash}")
                 if calculated_infohash == infohash:
                     found_files.append(file_path)
             except PermissionError:
-                pass
+                logging.error(f"Permission error accessing file: {file_path}")
             except FileNotFoundError:
-                pass
-
+                logging.error(f"File not found: {file_path}")
+            except Exception as e:
+                logging.error(f"Error getting info hash for file {file_path}: {e}")
+    
         return found_files
 
     def generate_unchoke_message(self):
