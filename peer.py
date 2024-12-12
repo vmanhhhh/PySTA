@@ -94,12 +94,12 @@ class Peer:
                 logging.error(f"Tracker response: {response.text}")
         except Exception as e:
             logging.error(f"Error announceing torrent file: {e}")
-    def check_peer_active(self, ip_address, info_hash):
+    def check_peer_active(self, ip_address, info_hash, announce_url):
         peer_ip, peer_port = ip_address
         try:
             with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
                 # Send a request to check if the peer is active and has the file
-                request_payload = f"CHECK {info_hash}".encode('utf-8')
+                request_payload = f"CHECK {info_hash} {announce_url}".encode('utf-8')
                 sock.sendall(request_payload)
                 
                 # Expect a response from the peer
@@ -183,7 +183,7 @@ class Peer:
                             formatted_ip_addresses.append((ip, int(port)))
                     logging.info(f"Total peers: {len(formatted_ip_addresses)}")
                     logging.info("Formatted IP addresses: %s", formatted_ip_addresses)
-                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip, info_hash)]
+                    active_peers = [ip for ip in formatted_ip_addresses if self.check_peer_active(ip, info_hash, announce_url)]
                     logging.info(f"Active peers: {active_peers}")
     
                     if not active_peers:
@@ -318,9 +318,9 @@ class Peer:
                 decoded_data = data.decode('utf-8')
                 parts = decoded_data.split(' ', 1)
                 if len(parts) == 2:
-                    command, info_hash = parts
+                    command, info_hash, announce_url = parts
                     if command == "CHECK":
-                        found_files = self.locate_file_by_infohash(info_hash, None)
+                        found_files = self.locate_file_by_infohash(info_hash, announce_url)
                         if found_files:
                             client_socket.sendall(b"HAS FILE")
                         else:
