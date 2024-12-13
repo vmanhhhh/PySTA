@@ -86,7 +86,7 @@ class Peer:
         logging.info(f"Creating torrent file for {file_name}...")
         torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
-    def announce_to_tracker(self, info_hash, tracker_url):
+    def announce_to_tracker(self, file_path, info_hash, tracker_url):
         try:
             tracker_url = tracker_url.replace('/announce', '')
             tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
@@ -94,6 +94,7 @@ class Peer:
             response = requests.get(tracker_url, params=params)
             if response.status_code == 200:
                 logging.info("Seed successful.")
+                self.store_file_path(file_path, tracker_url)
                 logging.info(f"Tracker response: {response.text}")
             else:
                 logging.error(f"Failed to seed. Status code: {response.status_code}")
@@ -181,25 +182,17 @@ class Peer:
         return 0
     
     def retrieve_torrent_file(self, torrent_file_path, destination):
-        with open(torrent_file_path, 'rb') as torrent_file:
-                torrent_data = torrent_file.read()
-        # After decoding the torrent data
-        decoded_torrent = bencodepy.decode(torrent_data)
-        decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-
-        # Decode the 'info' dictionary
-        decoded_info = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent[b'info'].items()}
-
-        # Get the file name
-        file_name_without_extension = decoded_info['name']
-        file_path = os.path.join(destination, file_name_without_extension)
-        destination = file_path
         try:
             with open(torrent_file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            
             decoded_torrent = bencodepy.decode(torrent_data)
             decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            info_dict = decoded_str_keys.get("info", {})
+            file_name_without_extension = torrent_utils.bytes_to_str(info_dict.get(b"name", b""))
+            if not file_name_without_extension:
+                logging.error("The 'name' key is missing in the torrent file's 'info' dictionary.")
+            file_path = os.path.join(destination, file_name_without_extension)
+            destination = file_path
     
             info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
@@ -335,7 +328,7 @@ class Peer:
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
             self.d_bytes += total_length
-            self.announce_to_tracker(sha1, announce_url)
+            self.announce_to_tracker(destination ,sha1, announce_url)
             logging.info("Download completed.")
 
 
