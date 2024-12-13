@@ -181,8 +181,17 @@ class Peer:
         return 0
     
     def retrieve_torrent_file(self, torrent_file_path, destination):
-        torrent_file_name = os.path.basename(torrent_file_path)
-        file_name_without_extension = os.path.splitext(torrent_file_name)[0]
+        with open(torrent_file_path, 'rb') as torrent_file:
+                torrent_data = torrent_file.read()
+        # After decoding the torrent data
+        decoded_torrent = bencodepy.decode(torrent_data)
+        decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+
+        # Decode the 'info' dictionary
+        decoded_info = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent[b'info'].items()}
+
+        # Get the file name
+        file_name_without_extension = decoded_info['name']
         file_path = os.path.join(destination, file_name_without_extension)
         destination = file_path
         try:
@@ -346,7 +355,7 @@ class Peer:
                 if len(parts) == 3:
                     command, info_hash, announce_url = parts
                     if command == "CHECK":
-                        found_files = self.locate_file_by_infohash(info_hash, announce_url)
+                        found_files = self.locate_file_by_infohash(info_hash)
                         if found_files:
                             client_socket.sendall(b"HAS FILE")
                         else:
@@ -370,7 +379,7 @@ class Peer:
                     logging.info(f"Info hash: {data}")
                     logging.info("URL not provided")
     
-                found_files = self.locate_file_by_infohash(data, url)
+                found_files = self.locate_file_by_infohash(data)
                 logging.info(f"Found files: {found_files}")
                 if found_files:
                     client_socket.sendall(b"OK")
