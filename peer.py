@@ -107,8 +107,11 @@ class Peer:
         try:
             with open(file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            decoded_torrent = bencodepy.decode(torrent_data)
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            info_dict = decoded_str_keys.get("info", {})
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
             tracker_url = tracker_url.replace('/announce', '')
             tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
@@ -195,7 +198,8 @@ class Peer:
             file_path = os.path.join(destination, file_name_without_extension)
             destination = file_path
     
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
             announce_url = decoded_torrent[b"announce"].decode()
     
             try:
@@ -484,8 +488,12 @@ class Peer:
         try:
             with open(torrent_file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            decoded_torrent = bencodepy.decode(torrent_data)
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            info_dict = decoded_str_keys.get("info", {})
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
+
             if not tracker_url.endswith('/'):
                 tracker_url += '/'
             scrape_url = urljoin(tracker_url, TRACKER_SCRAPE_PATH)
