@@ -9,6 +9,7 @@ import math
 import logging
 import time
 from datetime import datetime
+import urllib.parse
 from urllib.parse import urljoin
 
 # Constants
@@ -111,7 +112,38 @@ class Peer:
         except Exception as e:
             logging.error(f"Error checking peer {ip_address}: {e}")
         return False
-    
+    def contact_tracker(self, torrent_file_path, event, downloaded=0):
+        try:
+            with open(torrent_file_path, 'rb') as torrent_file:
+                torrent_data = torrent_file.read()
+
+            decoded_torrent = bencodepy.decode(torrent_data)
+            info = decoded_torrent[b'info']
+            info_hash = hashlib.sha1(bencodepy.encode(info)).digest()
+            peer_id = '-PC0001-' + ''.join([str(i) for i in range(12)])  # Example peer ID
+            tracker_url = decoded_torrent[b'announce'].decode()
+
+            params = {
+                'info_hash': info_hash,
+                'peer_id': peer_id.encode('utf-8'),
+                'port': self.port,
+                'uploaded': self.u_bytes,
+                'downloaded': downloaded,
+                'left': info[b'length'] - downloaded,
+                'compact': 1,
+                'event': event
+            }
+
+            # Encode URL parameters correctly
+            encoded_params = {k: (urllib.parse.quote(v) if isinstance(v, bytes) else v) for k, v in params.items()}
+            response = requests.get(tracker_url, params=encoded_params)
+            if response.status_code == 200:
+                logging.info(f"Tracker '{event}' request successful.")
+            else:
+                logging.error(f"Failed to contact tracker. Status code: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Error contacting tracker: {e}")
+
     def ping_peer(self, ip_address):
         peer_ip, peer_port = ip_address
         try:
@@ -199,12 +231,13 @@ class Peer:
                     logging.info(f"Total pieces: {total_pieces}")
                     start_piece = 0
                     start_time = time.time()
+                    self.contact_tracker(torrent_file_path, 'started', downloaded=self.d_bytes)
                     for ip_address, bandwidth in sorted_peers:
                         pieces_per_thread = max(1, int(total_pieces * (bandwidth / sum(peer_bandwidths.values()))))
                         end_piece = start_piece + pieces_per_thread + 1
                         if end_piece > total_pieces:
                             end_piece = total_pieces
-                        thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces))
+                        thread = threading.Thread(target=self.download_range, args=(ip_address, torrent_data, destination, start_piece, end_piece, announce_url, total_pieces, torrent_file_path))
                         threads.append(thread)
                         start_piece = end_piece
                         thread.start()
@@ -222,11 +255,11 @@ class Peer:
         except Exception as e:
             logging.error(f"Error downloading torrent file: {e}")
 
-    def download_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces):
+    def download_range(self, ip_address, file_data, destination, start_piece, end_piece, announce_url, total_pieces,torrent_file_path):
         for piece in range(start_piece, end_piece):
-            self.download_piece(ip_address, file_data, destination, str(piece), announce_url, total_pieces)
+            self.download_piece(ip_address, file_data, destination, str(piece), announce_url, total_pieces, torrent_file_path)
 
-    def download_piece(self, ip_address, file_data, destination, piece, announce_url, total_pieces):
+    def download_piece(self, ip_address, file_data, destination, piece, announce_url, total_pieces, torrent_file_path):
         peer_ip, peer_port = ip_address
         sock = socket.create_connection((peer_ip, peer_port))
         
@@ -301,7 +334,9 @@ class Peer:
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
             self.d_bytes += total_length
+            self.contact_tracker(torrent_file_path, 'completed', downloaded=self.d_bytes)
             logging.info("Download completed.")
+            
 
 
     def decode_peer_message(self, peer_message):
@@ -463,6 +498,14 @@ class Peer:
         - help: Display this help message.
         """
         print(help_text)
+    def stop(self):
+        # Send 'stopped' event to tracker for all active torrents
+        # Assuming self.active_torrents is a list of active torrent file paths
+        for torrent_file_path in self.active_torrents:
+            self.contact_tracker(torrent_file_path, 'stopped', downloaded=self.d_bytes)
+        logging.info("Peer is stopping.")
+        self.listen_socket.close()
+        # ...existing code to stop the peer...
 
     def scrape_torrent_info(self, torrent_file_path, tracker_url):
         try:
@@ -492,6 +535,7 @@ def get_local_ip():
         logging.error(f"Error getting local IP: {e}")
         return None
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     peer = Peer()
@@ -512,7 +556,7 @@ if __name__ == "__main__":
                     logging.info(f"Number of megabytes downloaded: {peer.d_bytes / (1024 * 1024):.2f}")
                     logging.info(f"Number of bytes uploaded: {peer.u_bytes}")
                     logging.info(f"Number of megabytes uploaded: {peer.u_bytes / (1024 * 1024):.2f}")
-                    peer.listen_socket.close()
+                    peer.stop()
                     break
                 elif command.lower() == "help":
                     peer.display_help()
