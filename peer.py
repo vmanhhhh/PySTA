@@ -51,28 +51,38 @@ class Peer:
                 continue
         return None
 
-    def store_file_path(self, string):
-        file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
-        file_path = os.path.join(PEER_DIRECTORY, file_name)
+    def store_file_path(self, file_path, tracker_url):
         os.makedirs(PEER_DIRECTORY, exist_ok=True)
-        unique_strings = set()
-
+        file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
+        storage_file_path = os.path.join(PEER_DIRECTORY, file_name)
+        file_mappings = {}
+    
+        # Load existing mappings
         try:
-            with open(file_path, 'r') as file:
+            with open(storage_file_path, 'r') as file:
                 for line in file:
-                    unique_strings.add(line.strip())
+                    info_hash, stored_file_path = line.strip().split(':', 1)
+                    file_mappings[info_hash] = stored_file_path
         except FileNotFoundError:
             pass
-
-        unique_strings.add(string)
-
-        with open(file_path, 'w') as file:
-            for unique_string in unique_strings:
-                file.write(unique_string + '\n')
+    
+        # Calculate the info hash of the file
+        info_hash = torrent_utils.get_info_hash(file_path, tracker_url)
+        if info_hash is None:
+            logging.error(f"Error calculating info hash for {file_path}")
+            return
+    
+        # Store the info hash and file path
+        file_mappings[info_hash] = file_path
+    
+        # Write updated mappings back to the file
+        with open(storage_file_path, 'w') as file:
+            for info_hash_key, stored_file_path in file_mappings.items():
+                file.write(f"{info_hash_key}:{stored_file_path}\n")
 
     def generate_torrent_file(self, file_path, file_dir, tracker_url):
         file_name = os.path.basename(file_path)
-        self.store_file_path(file_path)
+        self.store_file_path(file_path, tracker_url)
         logging.info(f"Creating torrent file for {file_name}...")
         torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
@@ -400,40 +410,27 @@ class Peer:
 
     def load_stored_file_paths(self):
         file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
-        file_path = os.path.join(PEER_DIRECTORY, file_name)   
-        strings = []
-
+        storage_file_path = os.path.join(PEER_DIRECTORY, file_name)
+        file_mappings = {}
+    
         try:
-            with open(file_path, 'r') as file:
+            with open(storage_file_path, 'r') as file:
                 for line in file:
-                    strings.append(line.strip())
+                    info_hash, file_path = line.strip().split(':', 1)
+                    file_mappings[info_hash] = file_path
         except FileNotFoundError:
             pass
-
-        return strings
-
-    def locate_file_by_infohash(self, infohash, url):
-        found_files = []
-        file_paths = self.load_stored_file_paths()
-        for file_path in file_paths:
-            try:
-                os.access(file_path, os.R_OK)
-                calculated_infohash = torrent_utils.get_info_hash(file_path,url)
-                if calculated_infohash is None:
-                    logging.error(f"Error generating metadata for file: {file_path}")
-                    continue
-                logging.info(f"Calculated info hash: {calculated_infohash}")
-                logging.info(f"Received info hash: {infohash}")
-                if calculated_infohash == infohash:
-                    found_files.append(file_path)
-            except PermissionError:
-                logging.error(f"Permission error accessing file: {file_path}")
-            except FileNotFoundError:
-                logging.error(f"File not found: {file_path}")
-            except Exception as e:
-                logging.error(f"Error getting info hash for file {file_path}: {e}")
     
-        return found_files
+        return file_mappings  # Returns a dictionary mapping info_hash to file_path
+
+    def locate_file_by_infohash(self, infohash):
+        file_mappings = self.load_stored_file_paths()
+        file_path = file_mappings.get(infohash)
+        if file_path and os.path.exists(file_path):
+            return [file_path]
+        else:
+            logging.error(f"File for info hash {infohash} not found.")
+            return []
 
     def generate_unchoke_message(self):
         message_length = (1).to_bytes(4, "big")
