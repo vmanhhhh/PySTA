@@ -76,6 +76,21 @@ class Peer:
         logging.info(f"Creating torrent file for {file_name}...")
         torrent_utils.create_torrent(file_path, tracker_url, os.path.join(file_dir, f'{file_name}{TORRENT_EXTENSION}'))
 
+    def announce_to_tracker(self, info_hash, tracker_url):
+        try:
+            tracker_url = tracker_url.replace('/announce', '')
+            tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
+            params = {"port": self.port}
+            response = requests.get(tracker_url, params=params)
+            if response.status_code == 200:
+                logging.info("Seed successful.")
+                logging.info(f"Tracker response: {response.text}")
+            else:
+                logging.error(f"Failed to seed. Status code: {response.status_code}")
+                logging.error(f"Tracker response: {response.text}")
+        except Exception as e:
+            logging.error(f"Error announcing to tracker: {e}")
+        
     def announce_torrent_to_tracker(self, file_path, tracker_url):
         try:
             with open(file_path, 'rb') as torrent_file:
@@ -301,6 +316,7 @@ class Peer:
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
             self.d_bytes += total_length
+            self.announce_to_tracker(sha1, announce_url)
             logging.info("Download completed.")
 
 
