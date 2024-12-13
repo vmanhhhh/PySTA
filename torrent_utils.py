@@ -28,7 +28,8 @@ def create_torrent(file_path, announce_url, output_file):
         info = decoded_str_keys['info']
         logging.info(f"Length: {info[b'length']}")
 
-        info_hash = hashlib.sha1(encoded_metadata).hexdigest()
+        info_bytes = bencodepy.encode(info)
+        info_hash = hashlib.sha1(info_bytes).hexdigest()
         logging.info(f"Info Hash: {info_hash}")
 
         return info_hash
@@ -40,8 +41,9 @@ def create_torrent(file_path, announce_url, output_file):
 def get_info_hash(file_path, announce_url):
     try:
         metadata = generate_metadata(file_path, announce_url)
-        encoded_metadata = bencodepy.encode(metadata)
-        return hashlib.sha1(encoded_metadata).hexdigest()
+        info_dict = metadata[b'info']
+        encoded_info = bencodepy.encode(info_dict)
+        return hashlib.sha1(encoded_info).hexdigest()
     except Exception as e:
         logging.error(f"Error getting info hash: {e}")
         return None

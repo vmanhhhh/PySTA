@@ -88,10 +88,11 @@ class Peer:
 
     def announce_to_tracker(self, file_path, info_hash, tracker_url):
         try:
-            tracker_url = tracker_url.replace('/announce', '')
-            tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
+            announce_url = tracker_url
+            announce_url = announce_url.replace('/announce', '')
+            announce_url = f"{announce_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
-            response = requests.get(tracker_url, params=params)
+            response = requests.get(announce_url, params=params)
             if response.status_code == 200:
                 logging.info("Seed successful.")
                 self.store_file_path(file_path, tracker_url)
@@ -328,7 +329,7 @@ class Peer:
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
             self.d_bytes += total_length
-            self.announce_to_tracker(destination ,sha1, announce_url)
+            self.announce_to_tracker(destination, sha1, announce_url)
             logging.info("Download completed.")
 
 
