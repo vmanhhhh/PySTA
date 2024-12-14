@@ -18,7 +18,7 @@ simultaneously.
 
 To install package
 ```
-pip install bencodepy logging requests
+pip install bencodepy logging requests psutil
 ```
 
 To run Tracker

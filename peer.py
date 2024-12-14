@@ -9,6 +9,7 @@ import math
 import logging
 import time
 from datetime import datetime
+import psutil
 from urllib.parse import urljoin
 
 # Constants
@@ -169,21 +170,40 @@ class Peer:
             thread.join()
 
     def measure_bandwidth(self, ip_address):
-        peer_ip, peer_port = ip_address
-        try:
-            start_time = time.time()
-            with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
-                sock.sendall(b"PING")
-                response = sock.recv(1024)
-                if response:
+            peer_ip, peer_port = ip_address
+            try:
+                # Record initial network I/O stats
+                net_io_start = psutil.net_io_counters()
+
+                # Create a large data payload to send
+                data = b"x" * 1024 * 1024  # 1 MB of data
+                start_time = time.time()
+                with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
+                    # Send the data
+                    sock.sendall(data)
+                    # Receive the same amount of data
+                    received_data = b""
+                    while len(received_data) < len(data):
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            break
+                        received_data += chunk
                     end_time = time.time()
+
+                # Record final network I/O stats
+                net_io_end = psutil.net_io_counters()
+
+                if len(received_data) == len(data):
                     elapsed_time = end_time - start_time
-                    bandwidth = len(response) / elapsed_time
+                    total_bytes_transferred = (net_io_end.bytes_sent - net_io_start.bytes_sent) + (net_io_end.bytes_recv - net_io_start.bytes_recv)
+                    bandwidth = total_bytes_transferred / elapsed_time
                     logging.info(f"Measured bandwidth for {peer_ip}:{peer_port} is {bandwidth:.2f} bytes/second.")
                     return bandwidth
-        except Exception as e:
-            logging.error(f"Error measuring bandwidth for {peer_ip}:{peer_port}: {e}")
-        return 0
+                else:
+                    logging.error(f"Error: Received data size does not match sent data size for {peer_ip}:{peer_port}.")
+            except Exception as e:
+                logging.error(f"Error measuring bandwidth for {peer_ip}:{peer_port}: {e}")
+            return 0
     
     def retrieve_torrent_file(self, torrent_file_path, destination):
         try:
