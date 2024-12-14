@@ -88,11 +88,10 @@ class Peer:
 
     def announce_to_tracker(self, file_path, info_hash, tracker_url):
         try:
-            announce_url = tracker_url
-            announce_url = announce_url.replace('/announce', '')
-            announce_url = f"{announce_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
+            tracker_url = tracker_url.replace('/announce', '')
+            tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
-            response = requests.get(announce_url, params=params)
+            response = requests.get(tracker_url, params=params)
             if response.status_code == 200:
                 logging.info("Seed successful.")
                 self.store_file_path(file_path, tracker_url)
@@ -107,11 +106,8 @@ class Peer:
         try:
             with open(file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            decoded_torrent = bencodepy.decode(torrent_data)
-            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-            info_dict = decoded_str_keys.get("info", {})
-            info_bytes = bencodepy.encode(info_dict)
-            info_hash = hashlib.sha1(info_bytes).hexdigest()
+            
+            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             tracker_url = tracker_url.replace('/announce', '')
             tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
@@ -198,8 +194,7 @@ class Peer:
             file_path = os.path.join(destination, file_name_without_extension)
             destination = file_path
     
-            info_bytes = bencodepy.encode(info_dict)
-            info_hash = hashlib.sha1(info_bytes).hexdigest()
+            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             announce_url = decoded_torrent[b"announce"].decode()
     
             try:
@@ -333,7 +328,7 @@ class Peer:
         if all(os.path.exists(piece_file) for piece_file in downloaded_pieces):
             self.combine_pieces_into_file(destination, total_pieces)
             self.d_bytes += total_length
-            self.announce_to_tracker(destination, sha1, announce_url)
+            self.announce_to_tracker(destination ,sha1, announce_url)
             logging.info("Download completed.")
 
 
@@ -488,12 +483,8 @@ class Peer:
         try:
             with open(torrent_file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            decoded_torrent = bencodepy.decode(torrent_data)
-            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
-            info_dict = decoded_str_keys.get("info", {})
-            info_bytes = bencodepy.encode(info_dict)
-            info_hash = hashlib.sha1(info_bytes).hexdigest()
-
+            
+            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
             if not tracker_url.endswith('/'):
                 tracker_url += '/'
             scrape_url = urljoin(tracker_url, TRACKER_SCRAPE_PATH)
