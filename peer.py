@@ -9,7 +9,6 @@ import math
 import logging
 import time
 from datetime import datetime
-import psutil
 from urllib.parse import urljoin
 
 # Constants
@@ -108,8 +107,11 @@ class Peer:
         try:
             with open(file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            decoded_torrent = bencodepy.decode(torrent_data)
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            info_dict = decoded_str_keys.get("info", {})
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
             tracker_url = tracker_url.replace('/announce', '')
             tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
@@ -169,38 +171,20 @@ class Peer:
     def measure_bandwidth(self, ip_address):
         peer_ip, peer_port = ip_address
         try:
-            # Record initial network I/O stats
-            net_io_start = psutil.net_io_counters()
-
-            # Create a large data payload to send
-            data = b"x" * 1024 * 1024  # 1 MB of data
             start_time = time.time()
             with socket.create_connection((peer_ip, peer_port), timeout=5) as sock:
-                # Send the data
-                sock.sendall(data)
-                # Receive the same amount of data
-                received_data = b""
-                while len(received_data) < len(data):
-                    chunk = sock.recv(min(4096, len(data) - len(received_data)))
-                    if not chunk:
-                        break
-                    received_data += chunk
-                end_time = time.time()
-
-            # Record final network I/O stats
-            net_io_end = psutil.net_io_counters()
-
-            if len(received_data) == len(data):
-                elapsed_time = end_time - start_time
-                total_bytes_transferred = (net_io_end.bytes_sent - net_io_start.bytes_sent) + (net_io_end.bytes_recv - net_io_start.bytes_recv)
-                bandwidth = total_bytes_transferred / elapsed_time
-                logging.info(f"Measured bandwidth for {peer_ip}:{peer_port} is {bandwidth:.2f} bytes/second.")
-                return bandwidth
-            else:
-                logging.error(f"Error: Received data size does not match sent data size for {peer_ip}:{peer_port}.")
+                sock.sendall(b"PING")
+                response = sock.recv(1024)
+                if response:
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    bandwidth = len(response) / elapsed_time
+                    logging.info(f"Measured bandwidth for {peer_ip}:{peer_port} is {bandwidth:.2f} bytes/second.")
+                    return bandwidth
         except Exception as e:
             logging.error(f"Error measuring bandwidth for {peer_ip}:{peer_port}: {e}")
         return 0
+    
     def retrieve_torrent_file(self, torrent_file_path, destination):
         try:
             with open(torrent_file_path, 'rb') as torrent_file:
@@ -214,7 +198,8 @@ class Peer:
             file_path = os.path.join(destination, file_name_without_extension)
             destination = file_path
     
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
             announce_url = decoded_torrent[b"announce"].decode()
     
             try:
@@ -361,7 +346,7 @@ class Peer:
         try:
             data = client_socket.recv(BUFFER_SIZE)
             logging.info(f"Received data from {client_address}: {data}")
-
+    
             if data:
                 decoded_data = data.decode('utf-8')
                 parts = decoded_data.split(' ', 2)
@@ -391,7 +376,7 @@ class Peer:
                     url = None
                     logging.info(f"Info hash: {data}")
                     logging.info("URL not provided")
-
+    
                 found_files = self.locate_file_by_infohash(data)
                 logging.info(f"Found files: {found_files}")
                 if found_files:
@@ -400,28 +385,20 @@ class Peer:
                     unchoke_payload = self.generate_unchoke_message()
                     client_socket.sendall(unchoke_payload)
                     while True:
-                        request_length = self.recv_exact(client_socket, 4)
-                        if not request_length:
-                            break
-                        request_length = int.from_bytes(request_length, "big")
-                        request_id = self.recv_exact(client_socket, 1)
-                        if not request_id:
-                            break
-                        request_id = int.from_bytes(request_id, "big")
+                        request_length = int.from_bytes(client_socket.recv(4), "big")
+                        request_id = int.from_bytes(client_socket.recv(1), "big")
                         logging.info(f"Received request ID: {request_id}")
                         if request_id != 6:
                             logging.info("Download completed. Closing connection.")
                             break
-
-                        request_data = self.recv_exact(client_socket, request_length - 1)
-                        if not request_data:
-                            break
+                        
+                        request_data = client_socket.recv(request_length - 1)
                         piece_index = int.from_bytes(request_data[:4], "big")
                         offset = int.from_bytes(request_data[4:8], "big")
                         block_length = int.from_bytes(request_data[8:], "big")
-
+                        
                         response_data = self.handle_piece_request(piece_index, offset, block_length, found_files[0])
-
+                        
                         response_length = len(response_data) + 9
                         response_payload = (
                             response_length.to_bytes(4, "big")
@@ -438,16 +415,6 @@ class Peer:
         except Exception as e:
             logging.error(f"Error handling peer request: {e}")
 
-    def recv_exact(self, sock, num_bytes):
-        """Helper function to receive an exact number of bytes from a socket."""
-        data = b""
-        while len(data) < num_bytes:
-            packet = sock.recv(num_bytes - len(data))
-            if not packet:
-                return None
-            data += packet
-        return data
-    
     def load_stored_file_paths(self):
         file_name = f"{INFO_FILE_PREFIX}{self.port}.txt"
         storage_file_path = os.path.join(PEER_DIRECTORY, file_name)
@@ -521,8 +488,12 @@ class Peer:
         try:
             with open(torrent_file_path, 'rb') as torrent_file:
                 torrent_data = torrent_file.read()
-            
-            info_hash = str(hashlib.sha1(torrent_data).hexdigest())
+            decoded_torrent = bencodepy.decode(torrent_data)
+            decoded_str_keys = {torrent_utils.bytes_to_str(k): v for k, v in decoded_torrent.items()}
+            info_dict = decoded_str_keys.get("info", {})
+            info_bytes = bencodepy.encode(info_dict)
+            info_hash = hashlib.sha1(info_bytes).hexdigest()
+
             if not tracker_url.endswith('/'):
                 tracker_url += '/'
             scrape_url = urljoin(tracker_url, TRACKER_SCRAPE_PATH)
