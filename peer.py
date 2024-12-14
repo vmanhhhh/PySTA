@@ -88,13 +88,14 @@ class Peer:
 
     def announce_to_tracker(self, file_path, info_hash, tracker_url):
         try:
+            announce_url = tracker_url
             tracker_url = tracker_url.replace('/announce', '')
             tracker_url = f"{tracker_url}{TRACKER_ANNOUNCE_PATH}?info_hash={info_hash}"
             params = {"port": self.port}
             response = requests.get(tracker_url, params=params)
             if response.status_code == 200:
                 logging.info("Seed successful.")
-                self.store_file_path(file_path, tracker_url)
+                self.store_file_path(file_path, announce_url)
                 logging.info(f"Tracker response: {response.text}")
             else:
                 logging.error(f"Failed to seed. Status code: {response.status_code}")
